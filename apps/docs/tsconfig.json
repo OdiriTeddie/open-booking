@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@openbooking/core": ["../../packages/booking-core/src/index.ts"],
+      "@openbooking/react": ["../../packages/booking-react/src/index.tsx"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

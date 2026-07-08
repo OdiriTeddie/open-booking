@@ -1,0 +1,8 @@
+node_modules
+dist
+.vite
+.pnpm-store
+coverage
+*.tsbuildinfo
+.DS_Store
+pnpm-lock.yaml

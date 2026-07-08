@@ -1,0 +1,94 @@
+:root {
+  --ob-border: #d9dee7;
+  --ob-text: #17202a;
+  --ob-muted: #627083;
+  --ob-surface: #ffffff;
+  --ob-accent: #146c5f;
+  --ob-accent-soft: #e7f3f0;
+}
+
+.ob-service-selector,
+.ob-time-slots {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ob-service-selector {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ob-time-slots {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
+.ob-button,
+.ob-submit {
+  border: 1px solid var(--ob-border);
+  border-radius: 8px;
+  background: var(--ob-surface);
+  color: var(--ob-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+}
+
+.ob-button[data-selected="true"] {
+  background: var(--ob-accent-soft);
+  border-color: var(--ob-accent);
+  color: var(--ob-accent);
+}
+
+.ob-button small,
+.ob-empty {
+  color: var(--ob-muted);
+}
+
+.ob-field,
+.ob-form {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ob-field span {
+  color: var(--ob-muted);
+  font-size: 0.9rem;
+}
+
+.ob-field input,
+.ob-field textarea {
+  border: 1px solid var(--ob-border);
+  border-radius: 8px;
+  font: inherit;
+  padding: 0.75rem;
+}
+
+.ob-field textarea {
+  min-height: 90px;
+}
+
+.ob-form {
+  gap: 1rem;
+}
+
+.ob-submit {
+  background: var(--ob-accent);
+  color: white;
+  text-align: center;
+}
+
+.ob-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ob-summary {
+  border: 1px solid var(--ob-border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.ob-summary h3,
+.ob-summary p {
+  margin: 0 0 0.5rem;
+}
