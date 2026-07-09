@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@openbooking/core": ["../booking-core/src/index.ts"]
+    }
+  },
   "include": ["src"]
 }
