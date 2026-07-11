@@ -33,10 +33,19 @@
   text-align: left;
 }
 
+.ob-service-selector .ob-button {
+  display: grid;
+  gap: 0.3rem;
+}
+
 .ob-button[data-selected="true"] {
   background: var(--ob-accent-soft);
   border-color: var(--ob-accent);
   color: var(--ob-accent);
+}
+
+.ob-button span {
+  display: block;
 }
 
 .ob-button small,
