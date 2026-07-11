@@ -12,6 +12,11 @@ It is not a Calendly clone. The core package focuses on pure scheduling logic: s
 - `@openbooking/ui`: Optional shared CSS and UI primitives.
 - `@openbooking/docs`: Vite + React demo app.
 
+## Contributing
+
+See `CONTRIBUTING.md` for workspace expectations, verification steps, and pull
+request guidelines.
+
 ## Quick Start
 
 ```bash

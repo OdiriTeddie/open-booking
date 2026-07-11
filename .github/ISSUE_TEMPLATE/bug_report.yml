@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a bug in Open Booking
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is going wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide steps, code, or a minimal example.
+      placeholder: |
+        1. Configure the engine with...
+        2. Call...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package
+      placeholder: "@openbooking/core"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, package manager, framework, browser if relevant.
+    validations:
+      required: false
