@@ -69,6 +69,8 @@ const weekdays: Weekday[] = [
 ];
 
 export function createBookingEngine(config: BookingEngineConfig): BookingEngine {
+  validateConfig(config);
+
   const services = new Map(config.services.map((service) => [service.id, service]));
   const bookings = config.bookings ?? [];
   const bufferMinutes = config.bufferMinutes ?? 0;
@@ -79,25 +81,27 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     throw new Error("Only the 'utc' timezone mode is supported in the MVP.");
   }
 
-  validateConfig(config);
-
   function getService(serviceId: string): Service | undefined {
     return services.get(serviceId);
   }
 
   function hasConflict(slot: BookingSlot): boolean {
-    const slotStart = Date.parse(slot.start);
-    const slotEnd = Date.parse(slot.end);
+    validateSlot(slot);
+
+    const slotStart = parseIsoDateTime(slot.start);
+    const slotEnd = parseIsoDateTime(slot.end);
 
     return bookings.some((booking) => {
-      const bookingStart = addMinutes(Date.parse(booking.start), -bufferMinutes);
-      const bookingEnd = addMinutes(Date.parse(booking.end), bufferMinutes);
+      const bookingStart = addMinutes(parseIsoDateTime(booking.start), -bufferMinutes);
+      const bookingEnd = addMinutes(parseIsoDateTime(booking.end), bufferMinutes);
 
       return slotStart < bookingEnd && slotEnd > bookingStart;
     });
   }
 
   function getAvailableSlots(input: GetAvailableSlotsInput): BookingSlot[] {
+    validateLocalDate(input.date);
+
     const service = services.get(input.serviceId);
 
     if (!service) {
@@ -111,9 +115,11 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     const weekday = getWeekday(input.date);
     const windows = config.availability[weekday] ?? [];
 
-    return windows.flatMap((window) =>
-      generateSlotsForWindow(input.date, window, service, slotIntervalMinutes).filter(
-        (slot) => !hasConflict(slot)
+    return uniqueSlots(
+      windows.flatMap((window) =>
+        generateSlotsForWindow(input.date, window, service, slotIntervalMinutes).filter(
+          (slot) => !hasConflict(slot)
+        )
       )
     );
   }
@@ -130,7 +136,19 @@ function validateConfig(config: BookingEngineConfig): void {
     throw new Error("At least one service is required.");
   }
 
+  const serviceIds = new Set<string>();
+
   for (const service of config.services) {
+    if (!service.id.trim()) {
+      throw new Error("Service id is required.");
+    }
+
+    if (serviceIds.has(service.id)) {
+      throw new Error(`Duplicate service id: ${service.id}`);
+    }
+
+    serviceIds.add(service.id);
+
     if (service.durationMinutes <= 0) {
       throw new Error(`Service '${service.id}' must have a positive duration.`);
     }
@@ -150,6 +168,20 @@ function validateConfig(config: BookingEngineConfig): void {
         throw new Error(`Availability window for ${day} must end after it starts.`);
       }
     }
+  }
+
+  for (const booking of config.bookings ?? []) {
+    if (!serviceIds.has(booking.serviceId)) {
+      throw new Error(`Booking '${booking.id}' references unknown service id: ${booking.serviceId}`);
+    }
+
+    if (parseIsoDateTime(booking.start) >= parseIsoDateTime(booking.end)) {
+      throw new Error(`Booking '${booking.id}' must end after it starts.`);
+    }
+  }
+
+  for (const date of config.blackoutDates ?? []) {
+    validateLocalDate(date);
   }
 }
 
@@ -186,6 +218,7 @@ function getWeekday(date: LocalDate): Weekday {
 }
 
 function dateFromUtcDate(date: LocalDate): Date {
+  validateLocalDate(date);
   return new Date(`${date}T00:00:00.000Z`);
 }
 
@@ -196,6 +229,10 @@ function dateTimeFromLocalParts(date: LocalDate, minutesAfterMidnight: number): 
 }
 
 function parseTimeToMinutes(time: LocalTime): number {
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    throw new Error(`Invalid time: ${time}`);
+  }
+
   const [hoursRaw, minutesRaw] = time.split(":");
   const hours = Number(hoursRaw);
   const minutes = Number(minutesRaw);
@@ -213,4 +250,51 @@ function parseTimeToMinutes(time: LocalTime): number {
 
 function addMinutes(epochMs: number, minutes: number): number {
   return epochMs + minutes * 60_000;
+}
+
+function validateLocalDate(date: LocalDate): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+}
+
+function parseIsoDateTime(value: IsoDateTime): number {
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || !/(Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    throw new Error(`Invalid ISO date time: ${value}`);
+  }
+
+  const epochMs = Date.parse(value);
+
+  if (Number.isNaN(epochMs)) {
+    throw new Error(`Invalid ISO date time: ${value}`);
+  }
+
+  return epochMs;
+}
+
+function validateSlot(slot: BookingSlot): void {
+  if (parseIsoDateTime(slot.start) >= parseIsoDateTime(slot.end)) {
+    throw new Error("Slot must end after it starts.");
+  }
+}
+
+function uniqueSlots(slots: BookingSlot[]): BookingSlot[] {
+  const seen = new Set<string>();
+
+  return slots.filter((slot) => {
+    const key = `${slot.serviceId}:${slot.start}:${slot.end}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
