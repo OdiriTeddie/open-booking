@@ -17,7 +17,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --environment jsdom"
+    "test": "vitest run --config vitest.config.js"
   },
   "dependencies": {
     "@openbooking/core": "workspace:*"
