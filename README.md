@@ -38,3 +38,38 @@ const slots = engine.getAvailableSlots({
   date: "2026-07-13"
 });
 ```
+
+## Core API
+
+`@openbooking/core` is the source of truth for scheduling logic. It has no React,
+Vue, browser, DOM, or UI dependencies.
+
+```ts
+const services = engine.getServices();
+
+const availability = engine.getAvailabilityForDate("2026-07-13");
+
+const slots = engine.getAvailableSlots({
+  serviceId: "consultation",
+  date: "2026-07-13"
+});
+
+const isAvailable = engine.isSlotAvailable(slots[0]);
+
+const booking = engine.createBooking({
+  id: "booking-1",
+  slot: slots[0]
+});
+
+const nextEngine = engine.addBooking(booking);
+```
+
+### Time Types
+
+- `LocalDate`: `YYYY-MM-DD`
+- `LocalTime`: `HH:mm`
+- `IsoDateTime`: ISO datetime with `Z` or an explicit offset
+
+The MVP runs in UTC mode only. Invalid dates, loose time strings, missing timezone
+offsets, duplicate service IDs, and invalid bookings are rejected by the core
+engine.

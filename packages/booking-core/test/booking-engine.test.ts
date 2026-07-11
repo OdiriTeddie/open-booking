@@ -116,6 +116,76 @@ describe("createBookingEngine", () => {
     ).toBe(true);
   });
 
+  it("returns configured services", () => {
+    const engine = createBookingEngine(baseConfig);
+
+    expect(engine.getServices()).toEqual(baseConfig.services);
+  });
+
+  it("returns date availability metadata", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      blackoutDates: ["2026-07-10"]
+    });
+
+    expect(engine.getAvailabilityForDate("2026-07-10")).toEqual({
+      date: "2026-07-10",
+      weekday: "friday",
+      isBlackoutDate: true,
+      windows: [{ start: "09:00", end: "12:00" }]
+    });
+  });
+
+  it("checks whether a generated slot is available", () => {
+    const engine = createBookingEngine(baseConfig);
+    const [slot] = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    expect(engine.isSlotAvailable(slot)).toBe(true);
+  });
+
+  it("returns false when a slot duration does not match the service", () => {
+    const engine = createBookingEngine(baseConfig);
+
+    expect(
+      engine.isSlotAvailable({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T10:00:00.000Z"
+      })
+    ).toBe(false);
+  });
+
+  it("creates a booking from an available slot", () => {
+    const engine = createBookingEngine(baseConfig);
+    const [slot] = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    expect(engine.createBooking({ id: "booking-1", slot })).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    });
+  });
+
+  it("returns a new engine with an added booking", () => {
+    const engine = createBookingEngine(baseConfig);
+    const [slot] = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+    const booking = engine.createBooking({ id: "booking-1", slot });
+    const nextEngine = engine.addBooking(booking);
+
+    expect(engine.isSlotAvailable(slot)).toBe(true);
+    expect(nextEngine.isSlotAvailable(slot)).toBe(false);
+  });
+
   it("does not treat exact booking boundaries as conflicts", () => {
     const engine = createBookingEngine({
       ...baseConfig,

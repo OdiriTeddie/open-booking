@@ -37,6 +37,13 @@ export interface BookingSlot {
   end: IsoDateTime;
 }
 
+export interface DateAvailability {
+  date: LocalDate;
+  weekday: Weekday;
+  isBlackoutDate: boolean;
+  windows: readonly AvailabilityWindow[];
+}
+
 export interface BookingEngineConfig {
   services: readonly Service[];
   availability: WeeklyAvailability;
@@ -52,10 +59,20 @@ export interface GetAvailableSlotsInput {
   date: LocalDate;
 }
 
+export interface CreateBookingInput {
+  id: string;
+  slot: BookingSlot;
+}
+
 export interface BookingEngine {
+  getServices(): readonly Service[];
   getAvailableSlots(input: GetAvailableSlotsInput): BookingSlot[];
   hasConflict(slot: BookingSlot): boolean;
+  isSlotAvailable(slot: BookingSlot): boolean;
+  getAvailabilityForDate(date: LocalDate): DateAvailability;
   getService(serviceId: string): Service | undefined;
+  createBooking(input: CreateBookingInput): Booking;
+  addBooking(booking: Booking): BookingEngine;
 }
 
 const weekdays: Weekday[] = [
@@ -72,6 +89,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   validateConfig(config);
 
   const services = new Map(config.services.map((service) => [service.id, service]));
+  const serviceList = [...config.services];
   const bookings = config.bookings ?? [];
   const bufferMinutes = config.bufferMinutes ?? 0;
   const slotIntervalMinutes = config.slotIntervalMinutes ?? 15;
@@ -79,6 +97,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
   if (config.timeZone && config.timeZone !== "utc") {
     throw new Error("Only the 'utc' timezone mode is supported in the MVP.");
+  }
+
+  function getServices(): readonly Service[] {
+    return serviceList;
   }
 
   function getService(serviceId: string): Service | undefined {
@@ -124,10 +146,72 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     );
   }
 
+  function isSlotAvailable(slot: BookingSlot): boolean {
+    validateSlot(slot);
+
+    const service = services.get(slot.serviceId);
+
+    if (!service) {
+      throw new Error(`Unknown service id: ${slot.serviceId}`);
+    }
+
+    const date = slot.start.slice(0, 10) as LocalDate;
+    const slotDurationMinutes =
+      (parseIsoDateTime(slot.end) - parseIsoDateTime(slot.start)) / 60_000;
+
+    if (slotDurationMinutes !== service.durationMinutes) {
+      return false;
+    }
+
+    return getAvailableSlots({ serviceId: slot.serviceId, date }).some(
+      (availableSlot) => availableSlot.start === slot.start && availableSlot.end === slot.end
+    );
+  }
+
+  function getAvailabilityForDate(date: LocalDate): DateAvailability {
+    validateLocalDate(date);
+
+    const weekday = getWeekday(date);
+
+    return {
+      date,
+      weekday,
+      isBlackoutDate: blackoutDates.has(date),
+      windows: config.availability[weekday] ?? []
+    };
+  }
+
+  function createBooking(input: CreateBookingInput): Booking {
+    if (isSlotAvailable(input.slot) === false) {
+      throw new Error("Cannot create a booking for an unavailable slot.");
+    }
+
+    return {
+      id: input.id,
+      serviceId: input.slot.serviceId,
+      start: input.slot.start,
+      end: input.slot.end
+    };
+  }
+
+  function addBooking(booking: Booking): BookingEngine {
+    validateBooking(booking, new Set(services.keys()));
+
+    return createBookingEngine({
+      ...config,
+      bookings: [...bookings, booking]
+    });
+  }
+
   return {
+    getServices,
     getAvailableSlots,
     hasConflict,
-    getService
+    isSlotAvailable,
+    getAvailabilityForDate,
+    getService,
+    createBooking,
+    addBooking
   };
 }
 
@@ -171,17 +255,21 @@ function validateConfig(config: BookingEngineConfig): void {
   }
 
   for (const booking of config.bookings ?? []) {
-    if (!serviceIds.has(booking.serviceId)) {
-      throw new Error(`Booking '${booking.id}' references unknown service id: ${booking.serviceId}`);
-    }
-
-    if (parseIsoDateTime(booking.start) >= parseIsoDateTime(booking.end)) {
-      throw new Error(`Booking '${booking.id}' must end after it starts.`);
-    }
+    validateBooking(booking, serviceIds);
   }
 
   for (const date of config.blackoutDates ?? []) {
     validateLocalDate(date);
+  }
+}
+
+function validateBooking(booking: Booking, serviceIds: ReadonlySet<string>): void {
+  if (!serviceIds.has(booking.serviceId)) {
+    throw new Error(`Booking '${booking.id}' references unknown service id: ${booking.serviceId}`);
+  }
+
+  if (parseIsoDateTime(booking.start) >= parseIsoDateTime(booking.end)) {
+    throw new Error(`Booking '${booking.id}' must end after it starts.`);
   }
 }
 
