@@ -8,7 +8,7 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter @openbooking/docs dev",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "pnpm -r test",
     "test:watch": "vitest",
     "format": "prettier --write .",
     "typecheck": "pnpm -r typecheck"
