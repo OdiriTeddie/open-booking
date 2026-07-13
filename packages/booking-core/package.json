@@ -2,10 +2,21 @@
   "name": "@openbooking/core",
   "version": "0.1.0",
   "description": "Pure TypeScript booking and availability engine.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OdiriTeddie/open-booking.git",
+    "directory": "packages/booking-core"
+  },
+  "homepage": "https://github.com/OdiriTeddie/open-booking/tree/main/packages/booking-core",
+  "bugs": {
+    "url": "https://github.com/OdiriTeddie/open-booking/issues"
+  },
+  "keywords": ["booking", "scheduling", "availability", "calendar", "typescript"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,6 +25,9 @@
     }
   },
   "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",

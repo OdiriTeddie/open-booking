@@ -2,10 +2,21 @@
   "name": "@openbooking/vue",
   "version": "0.1.0",
   "description": "Future Vue composables and components for Open Booking.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OdiriTeddie/open-booking.git",
+    "directory": "packages/booking-vue"
+  },
+  "homepage": "https://github.com/OdiriTeddie/open-booking/tree/main/packages/booking-vue",
+  "bugs": {
+    "url": "https://github.com/OdiriTeddie/open-booking/issues"
+  },
+  "keywords": ["booking", "vue", "nuxt", "scheduling", "headless"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,6 +25,9 @@
     }
   },
   "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
