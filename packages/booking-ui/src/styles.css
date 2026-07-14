@@ -38,10 +38,21 @@
   gap: 0.3rem;
 }
 
+.ob-time-slots .ob-button {
+  display: grid;
+  gap: 0.25rem;
+}
+
 .ob-button[data-selected="true"] {
   background: var(--ob-accent-soft);
   border-color: var(--ob-accent);
   color: var(--ob-accent);
+}
+
+.ob-time-slots .ob-button[data-available="false"] {
+  background: #f7f8fa;
+  color: var(--ob-muted);
+  cursor: not-allowed;
 }
 
 .ob-button span {

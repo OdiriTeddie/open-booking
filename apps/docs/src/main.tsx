@@ -70,6 +70,7 @@ function App() {
     []
   );
   const availabilityForDate = engine.getAvailabilityForDate(booking.selectedDate);
+  const unavailableSlots = booking.slotsWithAvailability.filter((slot) => !slot.available);
   const liveCoreSnippet = `import { createBookingEngine } from "@openbooking/core";
 
 const engine = createBookingEngine({
@@ -80,7 +81,7 @@ const engine = createBookingEngine({
   blackoutDates: ["2026-07-25"]
 });
 
-const slots = engine.getAvailableSlots({
+const slotAvailability = engine.getSlotsWithAvailability({
   serviceId: "${booking.selectedServiceId}",
   date: "${booking.selectedDate}"
 });`;
@@ -118,6 +119,10 @@ const slots = engine.getAvailableSlots({
           <div className="metric">
             <span>Available slots</span>
             <strong>{booking.slots.length}</strong>
+          </div>
+          <div className="metric">
+            <span>Unavailable slots</span>
+            <strong>{unavailableSlots.length}</strong>
           </div>
           <div className="metric">
             <span>Availability windows</span>
@@ -175,6 +180,10 @@ const slots = engine.getAvailableSlots({
                 <span>First slot</span>
                 <strong>{booking.slots[0]?.start ?? "No slot"}</strong>
               </div>
+              <div className="inspector-card">
+                <span>First blocked reason</span>
+                <strong>{unavailableSlots[0]?.reason ?? "None"}</strong>
+              </div>
             </div>
             <div className="code-grid">
               <article className="code-panel">
@@ -217,6 +226,7 @@ const slots = engine.getAvailableSlots({
                 <h3>3. Time</h3>
                 <TimeSlots
                   slots={booking.slots}
+                  diagnosedSlots={booking.slotsWithAvailability}
                   selectedSlot={booking.selectedSlot}
                   onSelectSlot={booking.selectSlot}
                 />

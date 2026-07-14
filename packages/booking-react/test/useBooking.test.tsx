@@ -26,6 +26,36 @@ describe("useBooking", () => {
       "2026-07-10T10:00:00.000Z",
       "2026-07-10T10:30:00.000Z"
     ]);
+    expect(result.current.slotsWithAvailability).toEqual([
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z",
+        available: true,
+        reason: undefined
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T09:30:00.000Z",
+        end: "2026-07-10T10:00:00.000Z",
+        available: true,
+        reason: undefined
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T10:00:00.000Z",
+        end: "2026-07-10T10:30:00.000Z",
+        available: true,
+        reason: undefined
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T10:30:00.000Z",
+        end: "2026-07-10T11:00:00.000Z",
+        available: true,
+        reason: undefined
+      }
+    ]);
   });
 
   it("updates slots when the selected service changes", () => {

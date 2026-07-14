@@ -2,6 +2,7 @@ import {
   type BookingEngineConfig,
   type BookingSlot,
   createBookingEngine,
+  type DiagnosedBookingSlot,
   type LocalDate
 } from "@openbooking/core";
 import { useMemo, useState } from "react";
@@ -67,6 +68,17 @@ export function useBooking(input: UseBookingInput) {
     });
   }, [engine, selectedDate, selectedServiceId]);
 
+  const slotsWithAvailability = useMemo(() => {
+    if (!selectedServiceId) {
+      return [] as DiagnosedBookingSlot[];
+    }
+
+    return engine.getSlotsWithAvailability({
+      serviceId: selectedServiceId,
+      date: selectedDate
+    });
+  }, [engine, selectedDate, selectedServiceId]);
+
   return {
     engine,
     services: input.services,
@@ -74,6 +86,7 @@ export function useBooking(input: UseBookingInput) {
     selectedDate,
     selectedSlot,
     slots,
+    slotsWithAvailability,
     selectService: (serviceId: string) => {
       setSelectedServiceId(serviceId);
       setSelectedSlot(null);
