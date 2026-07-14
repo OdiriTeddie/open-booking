@@ -239,6 +239,72 @@ describe("createBookingEngine", () => {
     ).toEqual([]);
   });
 
+  it("blocks slots when the daily booking cap is already reached", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        },
+        {
+          id: "booking-2",
+          serviceId: "photo-session",
+          start: "2026-07-10T10:00:00.000Z",
+          end: "2026-07-10T11:00:00.000Z"
+        }
+      ],
+      bookingRules: {
+        maxBookingsPerDay: 2
+      }
+    });
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "consultation",
+        date: "2026-07-10"
+      })
+    ).toEqual([]);
+  });
+
+  it("blocks slots when the per-service daily booking cap is already reached", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        }
+      ],
+      bookingRules: {
+        maxBookingsPerServicePerDay: 1
+      }
+    });
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "consultation",
+        date: "2026-07-10"
+      })
+    ).toEqual([]);
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "photo-session",
+        date: "2026-07-10"
+      }).map((slot) => slot.start)
+    ).toEqual([
+      "2026-07-10T09:30:00.000Z",
+      "2026-07-10T10:00:00.000Z",
+      "2026-07-10T10:30:00.000Z",
+      "2026-07-10T11:00:00.000Z"
+    ]);
+  });
+
   it("detects direct conflicts", () => {
     const engine = createBookingEngine({
       ...baseConfig,
@@ -372,6 +438,114 @@ describe("createBookingEngine", () => {
     });
   });
 
+  it("confirms a booking and returns the next engine state", () => {
+    const engine = createBookingEngine(baseConfig);
+    const [slot] = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    const result = engine.confirmBooking({ id: "booking-1", slot });
+
+    expect(result.status).toBe("confirmed");
+    expect(result.booking).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    });
+    expect(result.engine.isSlotAvailable(slot)).toBe(false);
+  });
+
+  it("returns a duplicate result for an idempotent confirm request", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        }
+      ]
+    });
+
+    const result = engine.confirmBooking({
+      id: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      }
+    });
+
+    expect(result.status).toBe("duplicate");
+    expect(result.booking).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    });
+  });
+
+  it("rejects reused booking ids with a different slot payload", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        }
+      ]
+    });
+
+    const result = engine.confirmBooking({
+      id: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-10T09:30:00.000Z",
+        end: "2026-07-10T10:00:00.000Z"
+      }
+    });
+
+    expect(result).toEqual({
+      status: "unavailable",
+      engine: expect.any(Object),
+      reason: "duplicate-booking-id"
+    });
+  });
+
+  it("fails confirmation when the slot is no longer available at booking time", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "existing-booking",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        }
+      ]
+    });
+
+    const result = engine.confirmBooking({
+      id: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      }
+    });
+
+    expect(result).toEqual({
+      status: "unavailable",
+      engine: expect.any(Object),
+      reason: "slot-unavailable"
+    });
+  });
+
   it("returns a new engine with an added booking", () => {
     const engine = createBookingEngine(baseConfig);
     const [slot] = engine.getAvailableSlots({
@@ -383,6 +557,31 @@ describe("createBookingEngine", () => {
 
     expect(engine.isSlotAvailable(slot)).toBe(true);
     expect(nextEngine.isSlotAvailable(slot)).toBe(false);
+  });
+
+  it("rejects createBooking when the id already exists", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        }
+      ]
+    });
+
+    expect(() =>
+      engine.createBooking({
+        id: "booking-1",
+        slot: {
+          serviceId: "consultation",
+          start: "2026-07-10T10:00:00.000Z",
+          end: "2026-07-10T10:30:00.000Z"
+        }
+      })
+    ).toThrow("Booking id already exists: booking-1");
   });
 
   it("does not treat exact booking boundaries as conflicts", () => {
@@ -518,6 +717,31 @@ describe("createBookingEngine", () => {
         serviceId: "consultation",
         start: "2026-07-10T09:00:00.000Z",
         end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toBe(false);
+  });
+
+  it("applies production booking rules in direct slot availability checks", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-10T09:00:00.000Z",
+          end: "2026-07-10T09:30:00.000Z"
+        }
+      ],
+      bookingRules: {
+        maxBookingsPerServicePerDay: 1
+      }
+    });
+
+    expect(
+      engine.isSlotAvailable({
+        serviceId: "consultation",
+        start: "2026-07-10T10:00:00.000Z",
+        end: "2026-07-10T10:30:00.000Z"
       })
     ).toBe(false);
   });
@@ -675,6 +899,26 @@ describe("createBookingEngine", () => {
         maxAdvanceDays: -1
       })
     ).toThrow("maxAdvanceDays cannot be negative.");
+  });
+
+  it("rejects invalid production booking rules", () => {
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        bookingRules: {
+          maxBookingsPerDay: -1
+        }
+      })
+    ).toThrow("maxBookingsPerDay must be a non-negative integer.");
+
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        bookingRules: {
+          maxBookingsPerServicePerDay: 1.5
+        }
+      })
+    ).toThrow("maxBookingsPerServicePerDay must be a non-negative integer.");
   });
 
   it("rejects bookings without timezone-safe date times", () => {

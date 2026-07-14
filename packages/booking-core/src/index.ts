@@ -57,6 +57,11 @@ export interface BookingSlot {
   end: IsoDateTime;
 }
 
+export interface BookingRules {
+  maxBookingsPerDay?: number;
+  maxBookingsPerServicePerDay?: number;
+}
+
 export interface DateAvailability {
   date: LocalDate;
   weekday: Weekday;
@@ -77,6 +82,7 @@ export interface BookingEngineConfig {
   dateOverrides?: readonly DateAvailabilityOverride[];
   recurringAvailability?: readonly RecurringAvailabilityRule[];
   recurringBlackoutRules?: readonly RecurringBlackoutRule[];
+  bookingRules?: BookingRules;
   minimumNoticeMinutes?: number;
   maxAdvanceDays?: number;
   now?: IsoDateTime;
@@ -94,6 +100,19 @@ export interface CreateBookingInput {
   slot: BookingSlot;
 }
 
+export type ConfirmBookingInput = CreateBookingInput;
+
+export type BookingFailureReason =
+  | "slot-unavailable"
+  | "duplicate-booking-id";
+
+export interface ConfirmBookingResult {
+  status: "confirmed" | "duplicate" | "unavailable";
+  booking?: Booking;
+  engine: BookingEngine;
+  reason?: BookingFailureReason;
+}
+
 export interface BookingEngine {
   getServices(): readonly Service[];
   getAvailableSlots(input: GetAvailableSlotsInput): BookingSlot[];
@@ -102,6 +121,7 @@ export interface BookingEngine {
   getAvailabilityForDate(date: LocalDate): DateAvailability;
   getService(serviceId: string): Service | undefined;
   createBooking(input: CreateBookingInput): Booking;
+  confirmBooking(input: ConfirmBookingInput): ConfirmBookingResult;
   addBooking(booking: Booking): BookingEngine;
 }
 
@@ -131,6 +151,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   );
   const recurringAvailability = config.recurringAvailability ?? [];
   const recurringBlackoutRules = config.recurringBlackoutRules ?? [];
+  const bookingRules = config.bookingRules;
   const timeZone = config.timeZone ?? "UTC";
   const hasBookingConstraints =
     config.minimumNoticeMinutes !== undefined || config.maxAdvanceDays !== undefined;
@@ -180,7 +201,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return uniqueSlots(
       windows.flatMap((window) =>
         generateSlotsForWindow(input.date, window, service, slotIntervalMinutes, timeZone).filter(
-          (slot) => !hasConflict(slot) && satisfiesBookingConstraints(slot)
+          (slot) =>
+            !hasConflict(slot) &&
+            satisfiesBookingConstraints(slot) &&
+            satisfiesProductionBookingRules(slot)
         )
       )
     );
@@ -204,6 +228,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     }
 
     if (!satisfiesBookingConstraints(slot)) {
+      return false;
+    }
+
+    if (!satisfiesProductionBookingRules(slot)) {
       return false;
     }
 
@@ -232,6 +260,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   }
 
   function createBooking(input: CreateBookingInput): Booking {
+    if (findBookingById(input.id)) {
+      throw new Error(`Booking id already exists: ${input.id}`);
+    }
+
     if (isSlotAvailable(input.slot) === false) {
       throw new Error("Cannot create a booking for an unavailable slot.");
     }
@@ -241,6 +273,48 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       serviceId: input.slot.serviceId,
       start: input.slot.start,
       end: input.slot.end
+    };
+  }
+
+  function confirmBooking(input: ConfirmBookingInput): ConfirmBookingResult {
+    const existingBooking = findBookingById(input.id);
+
+    if (existingBooking) {
+      if (isSameBooking(existingBooking, input)) {
+        return {
+          status: "duplicate",
+          booking: existingBooking,
+          engine: createBookingEngine(config)
+        };
+      }
+
+      return {
+        status: "unavailable",
+        engine: createBookingEngine(config),
+        reason: "duplicate-booking-id"
+      };
+    }
+
+    if (!isSlotAvailable(input.slot)) {
+      return {
+        status: "unavailable",
+        engine: createBookingEngine(config),
+        reason: "slot-unavailable"
+      };
+    }
+
+    const booking = {
+      id: input.id,
+      serviceId: input.slot.serviceId,
+      start: input.slot.start,
+      end: input.slot.end
+    };
+    const nextEngine = addBooking(booking);
+
+    return {
+      status: "confirmed",
+      booking,
+      engine: nextEngine
     };
   }
 
@@ -305,6 +379,44 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return slotStart <= latestBookableStart;
   }
 
+  function satisfiesProductionBookingRules(slot: BookingSlot): boolean {
+    if (!bookingRules) {
+      return true;
+    }
+
+    const date = getLocalDateFromIsoDateTime(slot.start, timeZone);
+
+    if (
+      bookingRules.maxBookingsPerDay !== undefined &&
+      countBookingsForDate(date) >= bookingRules.maxBookingsPerDay
+    ) {
+      return false;
+    }
+
+    if (
+      bookingRules.maxBookingsPerServicePerDay !== undefined &&
+      countBookingsForDate(date, slot.serviceId) >= bookingRules.maxBookingsPerServicePerDay
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function countBookingsForDate(date: LocalDate, serviceId?: string): number {
+    return bookings.filter((booking) => {
+      if (serviceId && booking.serviceId !== serviceId) {
+        return false;
+      }
+
+      return getLocalDateFromIsoDateTime(booking.start, timeZone) === date;
+    }).length;
+  }
+
+  function findBookingById(id: string): Booking | undefined {
+    return bookings.find((booking) => booking.id === id);
+  }
+
   return {
     getServices,
     getAvailableSlots,
@@ -313,6 +425,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     getAvailabilityForDate,
     getService,
     createBooking,
+    confirmBooking,
     addBooking
   };
 }
@@ -395,9 +508,15 @@ function validateConfig(config: BookingEngineConfig): void {
   for (const date of config.blackoutDates ?? []) {
     validateLocalDate(date);
   }
+
+  validateBookingRules(config.bookingRules);
 }
 
 function validateBooking(booking: Booking, serviceIds: ReadonlySet<string>): void {
+  if (!booking.id.trim()) {
+    throw new Error("Booking id is required.");
+  }
+
   if (!serviceIds.has(booking.serviceId)) {
     throw new Error(`Booking '${booking.id}' references unknown service id: ${booking.serviceId}`);
   }
@@ -471,6 +590,14 @@ function validateAvailabilityWindows(
   }
 }
 
+function isSameBooking(existingBooking: Booking, input: ConfirmBookingInput): boolean {
+  return (
+    existingBooking.serviceId === input.slot.serviceId &&
+    existingBooking.start === input.slot.start &&
+    existingBooking.end === input.slot.end
+  );
+}
+
 function validateRecurringWeeklyRule(
   rule: RecurringAvailabilityRule | RecurringBlackoutRule,
   label: string
@@ -507,6 +634,28 @@ function validateRecurringWeeklyRule(
 
   if (rule.startDate && rule.endDate && rule.startDate > rule.endDate) {
     throw new Error(`${label} startDate must be on or before endDate.`);
+  }
+}
+
+function validateBookingRules(bookingRules: BookingRules | undefined): void {
+  if (!bookingRules) {
+    return;
+  }
+
+  validateNonNegativeIntegerRule(bookingRules.maxBookingsPerDay, "maxBookingsPerDay");
+  validateNonNegativeIntegerRule(
+    bookingRules.maxBookingsPerServicePerDay,
+    "maxBookingsPerServicePerDay"
+  );
+}
+
+function validateNonNegativeIntegerRule(value: number | undefined, label: string): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer.`);
   }
 }
 

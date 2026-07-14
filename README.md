@@ -2,7 +2,7 @@
 
 Open Booking is a lightweight, framework-agnostic, headless booking engine for small business websites.
 
-It is not a Calendly clone. The core package focuses on pure scheduling logic: services, weekly availability, booking conflicts, buffers, blackout dates, and slot generation. Framework packages adapt that logic for React first, with Vue/Nuxt planned later.
+It is not a Calendly clone. The core package focuses on pure scheduling logic: services, weekly availability, booking conflicts, buffers, blackout dates, recurrence, booking constraints, production booking caps, and slot generation. Framework packages adapt that logic for React first, with Vue/Nuxt planned later.
 
 ## Packages
 

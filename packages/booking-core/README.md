@@ -12,6 +12,7 @@ Pure TypeScript booking logic for Open Booking.
 - excludes conflicting bookings
 - applies buffer time
 - supports minimum notice and booking horizon rules
+- supports production booking caps per day and per service
 - supports blackout dates
 - supports explicit business time zones
 - validates timezone-safe booking inputs
@@ -60,6 +61,10 @@ const engine = createBookingEngine({
       weekdays: ["sunday"]
     }
   ],
+  bookingRules: {
+    maxBookingsPerDay: 12,
+    maxBookingsPerServicePerDay: 4
+  },
   bookings: [],
   bufferMinutes: 15,
   minimumNoticeMinutes: 120,
@@ -84,6 +89,7 @@ const slots = engine.getAvailableSlots({
 - `engine.hasConflict(slot)`
 - `engine.isSlotAvailable(slot)`
 - `engine.createBooking({ id, slot })`
+- `engine.confirmBooking({ id, slot })`
 - `engine.addBooking(booking)`
 
 ## Time Zone Model
@@ -117,3 +123,22 @@ const slots = engine.getAvailableSlots({
 - `maxAdvanceDays` limits how far into the future a slot can be booked.
 - `now` can be supplied in tests or controlled environments to make constraint
   evaluation deterministic.
+
+## Production Booking Rules
+
+- `bookingRules.maxBookingsPerDay` caps total bookings that can start on the
+  same local business date.
+- `bookingRules.maxBookingsPerServicePerDay` caps bookings per service on the
+  same local business date.
+- daily caps are enforced during slot generation, direct availability checks,
+  and booking creation.
+
+## Confirmation Workflow
+
+- `createBooking({ id, slot })` validates the slot and returns a booking shape.
+- `confirmBooking({ id, slot })` performs final slot validation at booking time
+  and returns an explicit result object.
+- repeated `confirmBooking` calls with the same `id` and same slot return
+  `status: "duplicate"` with the original booking.
+- repeated `confirmBooking` calls with the same `id` and a different slot return
+  `status: "unavailable"` with `reason: "duplicate-booking-id"`.
