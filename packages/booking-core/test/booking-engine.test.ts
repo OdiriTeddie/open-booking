@@ -411,6 +411,18 @@ describe("createBookingEngine", () => {
     expect(engine.isSlotAvailable(slot)).toBe(true);
   });
 
+  it("returns slot availability diagnostics for an available slot", () => {
+    const engine = createBookingEngine(baseConfig);
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toEqual({ available: true });
+  });
+
   it("returns false when a slot duration does not match the service", () => {
     const engine = createBookingEngine(baseConfig);
 
@@ -421,6 +433,57 @@ describe("createBookingEngine", () => {
         end: "2026-07-10T10:00:00.000Z"
       })
     ).toBe(false);
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T10:00:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "invalid-slot-duration"
+    });
+  });
+
+  it("reports outside-availability diagnostics", () => {
+    const engine = createBookingEngine(baseConfig);
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T08:00:00.000Z",
+        end: "2026-07-10T08:30:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "outside-availability"
+    });
+  });
+
+  it("reports conflict diagnostics", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "photo-session",
+          start: "2026-07-10T10:00:00.000Z",
+          end: "2026-07-10T11:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T10:30:00.000Z",
+        end: "2026-07-10T11:00:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "conflict"
+    });
   });
 
   it("creates a booking from an available slot", () => {
@@ -719,6 +782,17 @@ describe("createBookingEngine", () => {
         end: "2026-07-10T09:30:00.000Z"
       })
     ).toBe(false);
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "minimum-notice"
+    });
   });
 
   it("applies production booking rules in direct slot availability checks", () => {
@@ -744,6 +818,99 @@ describe("createBookingEngine", () => {
         end: "2026-07-10T10:30:00.000Z"
       })
     ).toBe(false);
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T10:00:00.000Z",
+        end: "2026-07-10T10:30:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "max-bookings-per-service-per-day"
+    });
+  });
+
+  it("reports blackout-date diagnostics", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      blackoutDates: ["2026-07-10"]
+    });
+
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "blackout-date"
+    });
+  });
+
+  it("returns generated slots with availability diagnostics", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "photo-session",
+          start: "2026-07-10T10:00:00.000Z",
+          end: "2026-07-10T11:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(
+      engine.getSlotsWithAvailability({
+        serviceId: "consultation",
+        date: "2026-07-10"
+      })
+    ).toEqual([
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z",
+        available: true,
+        reason: undefined
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T09:30:00.000Z",
+        end: "2026-07-10T10:00:00.000Z",
+        available: true,
+        reason: undefined
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T10:00:00.000Z",
+        end: "2026-07-10T10:30:00.000Z",
+        available: false,
+        reason: "conflict"
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T10:30:00.000Z",
+        end: "2026-07-10T11:00:00.000Z",
+        available: false,
+        reason: "conflict"
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T11:00:00.000Z",
+        end: "2026-07-10T11:30:00.000Z",
+        available: true,
+        reason: undefined
+      },
+      {
+        serviceId: "consultation",
+        start: "2026-07-10T11:30:00.000Z",
+        end: "2026-07-10T12:00:00.000Z",
+        available: true,
+        reason: undefined
+      }
+    ]);
   });
 
   it("rejects invalid local dates", () => {

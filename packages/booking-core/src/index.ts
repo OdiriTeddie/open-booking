@@ -102,6 +102,27 @@ export interface CreateBookingInput {
 
 export type ConfirmBookingInput = CreateBookingInput;
 
+export type BookingUnavailabilityReason =
+  | "unknown-service"
+  | "invalid-slot-duration"
+  | "outside-availability"
+  | "blackout-date"
+  | "conflict"
+  | "minimum-notice"
+  | "max-advance"
+  | "max-bookings-per-day"
+  | "max-bookings-per-service-per-day";
+
+export interface SlotAvailabilityResult {
+  available: boolean;
+  reason?: BookingUnavailabilityReason;
+}
+
+export interface DiagnosedBookingSlot extends BookingSlot {
+  available: boolean;
+  reason?: BookingUnavailabilityReason;
+}
+
 export type BookingFailureReason =
   | "slot-unavailable"
   | "duplicate-booking-id";
@@ -116,8 +137,10 @@ export interface ConfirmBookingResult {
 export interface BookingEngine {
   getServices(): readonly Service[];
   getAvailableSlots(input: GetAvailableSlotsInput): BookingSlot[];
+  getSlotsWithAvailability(input: GetAvailableSlotsInput): DiagnosedBookingSlot[];
   hasConflict(slot: BookingSlot): boolean;
   isSlotAvailable(slot: BookingSlot): boolean;
+  getSlotAvailability(slot: BookingSlot): SlotAvailabilityResult;
   getAvailabilityForDate(date: LocalDate): DateAvailability;
   getService(serviceId: string): Service | undefined;
   createBooking(input: CreateBookingInput): Booking;
@@ -200,23 +223,57 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
     return uniqueSlots(
       windows.flatMap((window) =>
-        generateSlotsForWindow(input.date, window, service, slotIntervalMinutes, timeZone).filter(
-          (slot) =>
-            !hasConflict(slot) &&
-            satisfiesBookingConstraints(slot) &&
-            satisfiesProductionBookingRules(slot)
+        generateSlotsForWindow(input.date, window, service, slotIntervalMinutes, timeZone)
+          .map((slot) => ({ slot, availability: getSlotAvailability(slot) }))
+          .filter(({ availability }) => availability.available)
+          .map(({ slot }) => slot)
+      )
+    );
+  }
+
+  function getSlotsWithAvailability(input: GetAvailableSlotsInput): DiagnosedBookingSlot[] {
+    validateLocalDate(input.date);
+
+    const service = services.get(input.serviceId);
+
+    if (!service) {
+      throw new Error(`Unknown service id: ${input.serviceId}`);
+    }
+
+    if (isBlackoutDate(input.date)) {
+      return [];
+    }
+
+    const windows = getWindowsForDate(input.date);
+
+    return uniqueDiagnosedSlots(
+      windows.flatMap((window) =>
+        generateSlotsForWindow(input.date, window, service, slotIntervalMinutes, timeZone).map(
+          (slot) => {
+            const availability = getSlotAvailability(slot);
+
+            return {
+              ...slot,
+              available: availability.available,
+              reason: availability.reason
+            };
+          }
         )
       )
     );
   }
 
   function isSlotAvailable(slot: BookingSlot): boolean {
+    return getSlotAvailability(slot).available;
+  }
+
+  function getSlotAvailability(slot: BookingSlot): SlotAvailabilityResult {
     validateSlot(slot);
 
     const service = services.get(slot.serviceId);
 
     if (!service) {
-      throw new Error(`Unknown service id: ${slot.serviceId}`);
+      return { available: false, reason: "unknown-service" };
     }
 
     const date = getLocalDateFromIsoDateTime(slot.start, timeZone);
@@ -224,20 +281,34 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       (parseIsoDateTime(slot.end) - parseIsoDateTime(slot.start)) / 60_000;
 
     if (slotDurationMinutes !== service.durationMinutes) {
-      return false;
+      return { available: false, reason: "invalid-slot-duration" };
     }
 
-    if (!satisfiesBookingConstraints(slot)) {
-      return false;
+    if (isBlackoutDate(date)) {
+      return { available: false, reason: "blackout-date" };
     }
 
-    if (!satisfiesProductionBookingRules(slot)) {
-      return false;
+    if (!matchesAvailabilityWindows(slot, date)) {
+      return { available: false, reason: "outside-availability" };
     }
 
-    return getAvailableSlots({ serviceId: slot.serviceId, date }).some(
-      (availableSlot) => availableSlot.start === slot.start && availableSlot.end === slot.end
-    );
+    if (hasConflict(slot)) {
+      return { available: false, reason: "conflict" };
+    }
+
+    const bookingConstraintReason = getBookingConstraintFailureReason(slot);
+
+    if (bookingConstraintReason) {
+      return { available: false, reason: bookingConstraintReason };
+    }
+
+    const productionRuleReason = getProductionBookingRuleFailureReason(slot);
+
+    if (productionRuleReason) {
+      return { available: false, reason: productionRuleReason };
+    }
+
+    return { available: true };
   }
 
   function getAvailabilityForDate(date: LocalDate): DateAvailability {
@@ -359,29 +430,38 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return blackoutDates.has(date) || matchesRecurringBlackoutRule(date);
   }
 
-  function satisfiesBookingConstraints(slot: BookingSlot): boolean {
+  function getBookingConstraintFailureReason(
+    slot: BookingSlot
+  ): Extract<BookingUnavailabilityReason, "minimum-notice" | "max-advance"> | undefined {
     if (!hasBookingConstraints || nowEpochMs === null) {
-      return true;
+      return undefined;
     }
 
     const slotStart = parseIsoDateTime(slot.start);
     const minimumBookableStart = addMinutes(nowEpochMs, minimumNoticeMinutes);
 
     if (slotStart < minimumBookableStart) {
-      return false;
+      return "minimum-notice";
     }
 
     if (maxAdvanceDays === undefined) {
-      return true;
+      return undefined;
     }
 
     const latestBookableStart = addDays(nowEpochMs, maxAdvanceDays);
-    return slotStart <= latestBookableStart;
+    return slotStart <= latestBookableStart ? undefined : "max-advance";
   }
 
-  function satisfiesProductionBookingRules(slot: BookingSlot): boolean {
+  function getProductionBookingRuleFailureReason(
+    slot: BookingSlot
+  ):
+    | Extract<
+        BookingUnavailabilityReason,
+        "max-bookings-per-day" | "max-bookings-per-service-per-day"
+      >
+    | undefined {
     if (!bookingRules) {
-      return true;
+      return undefined;
     }
 
     const date = getLocalDateFromIsoDateTime(slot.start, timeZone);
@@ -390,17 +470,17 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       bookingRules.maxBookingsPerDay !== undefined &&
       countBookingsForDate(date) >= bookingRules.maxBookingsPerDay
     ) {
-      return false;
+      return "max-bookings-per-day";
     }
 
     if (
       bookingRules.maxBookingsPerServicePerDay !== undefined &&
       countBookingsForDate(date, slot.serviceId) >= bookingRules.maxBookingsPerServicePerDay
     ) {
-      return false;
+      return "max-bookings-per-service-per-day";
     }
 
-    return true;
+    return undefined;
   }
 
   function countBookingsForDate(date: LocalDate, serviceId?: string): number {
@@ -417,11 +497,19 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return bookings.find((booking) => booking.id === id);
   }
 
+  function matchesAvailabilityWindows(slot: BookingSlot, date: LocalDate): boolean {
+    return getWindowsForDate(date).some((window) =>
+      isSlotWithinWindow(slot, date, window, timeZone)
+    );
+  }
+
   return {
     getServices,
     getAvailableSlots,
+    getSlotsWithAvailability,
     hasConflict,
     isSlotAvailable,
+    getSlotAvailability,
     getAvailabilityForDate,
     getService,
     createBooking,
@@ -749,6 +837,21 @@ function uniqueSlots(slots: BookingSlot[]): BookingSlot[] {
   });
 }
 
+function uniqueDiagnosedSlots(slots: DiagnosedBookingSlot[]): DiagnosedBookingSlot[] {
+  const seen = new Set<string>();
+
+  return slots.filter((slot) => {
+    const key = `${slot.serviceId}:${slot.start}:${slot.end}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
 function mergeAvailabilityWindows(
   baseWindows: readonly AvailabilityWindow[],
   recurringWindows: readonly AvailabilityWindow[]
@@ -777,6 +880,20 @@ function matchesWeeklyRule(
     (rule.startDate === undefined || date >= rule.startDate) &&
     (rule.endDate === undefined || date <= rule.endDate)
   );
+}
+
+function isSlotWithinWindow(
+  slot: BookingSlot,
+  date: LocalDate,
+  window: AvailabilityWindow,
+  timeZone: string
+): boolean {
+  const slotStart = parseIsoDateTime(slot.start);
+  const slotEnd = parseIsoDateTime(slot.end);
+  const windowStart = dateTimeFromLocalParts(date, parseTimeToMinutes(window.start), timeZone).getTime();
+  const windowEnd = dateTimeFromLocalParts(date, parseTimeToMinutes(window.end), timeZone).getTime();
+
+  return slotStart >= windowStart && slotEnd <= windowEnd;
 }
 
 function zonedDateTimeToUtcEpochMs(

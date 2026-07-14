@@ -86,8 +86,10 @@ const slots = engine.getAvailableSlots({
 - `engine.getService(serviceId)`
 - `engine.getAvailabilityForDate(date)`
 - `engine.getAvailableSlots({ serviceId, date })`
+- `engine.getSlotsWithAvailability({ serviceId, date })`
 - `engine.hasConflict(slot)`
 - `engine.isSlotAvailable(slot)`
+- `engine.getSlotAvailability(slot)`
 - `engine.createBooking({ id, slot })`
 - `engine.confirmBooking({ id, slot })`
 - `engine.addBooking(booking)`
@@ -142,3 +144,19 @@ const slots = engine.getAvailableSlots({
   `status: "duplicate"` with the original booking.
 - repeated `confirmBooking` calls with the same `id` and a different slot return
   `status: "unavailable"` with `reason: "duplicate-booking-id"`.
+
+## Availability Diagnostics
+
+- `getSlotAvailability(slot)` returns `{ available, reason? }`.
+- `getSlotsWithAvailability({ serviceId, date })` returns generated slots plus
+  availability diagnostics for each slot.
+- current unavailability reasons include:
+  - `unknown-service`
+  - `invalid-slot-duration`
+  - `outside-availability`
+  - `blackout-date`
+  - `conflict`
+  - `minimum-notice`
+  - `max-advance`
+  - `max-bookings-per-day`
+  - `max-bookings-per-service-per-day`
