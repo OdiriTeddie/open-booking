@@ -10,6 +10,7 @@ Pure TypeScript booking logic for Open Booking.
 - generates booking slots
 - excludes conflicting bookings
 - applies buffer time
+- supports minimum notice and booking horizon rules
 - supports blackout dates
 - supports explicit business time zones
 - validates timezone-safe booking inputs
@@ -45,6 +46,8 @@ const engine = createBookingEngine({
   ],
   bookings: [],
   bufferMinutes: 15,
+  minimumNoticeMinutes: 120,
+  maxAdvanceDays: 30,
   blackoutDates: [],
   timeZone: "Europe/London"
 });
@@ -79,3 +82,10 @@ const slots = engine.getAvailableSlots({
 
 - `dateOverrides` replace weekly availability for the matching date.
 - `blackoutDates` still return no slots, even if a date override exists.
+
+## Booking Constraints
+
+- `minimumNoticeMinutes` prevents near-term bookings.
+- `maxAdvanceDays` limits how far into the future a slot can be booked.
+- `now` can be supplied in tests or controlled environments to make constraint
+  evaluation deterministic.

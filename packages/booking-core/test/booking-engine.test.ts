@@ -137,6 +137,46 @@ describe("createBookingEngine", () => {
     ).toEqual([]);
   });
 
+  it("filters out slots inside minimum notice", () => {
+    const engine = createBookingEngine({
+      services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+      availability: {
+        friday: [{ start: "09:00", end: "12:00" }]
+      },
+      slotIntervalMinutes: 30,
+      minimumNoticeMinutes: 90,
+      now: "2026-07-10T08:00:00.000Z"
+    });
+
+    const slots = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    expect(slots.map((slot) => slot.start)).toEqual([
+      "2026-07-10T09:30:00.000Z",
+      "2026-07-10T10:00:00.000Z",
+      "2026-07-10T10:30:00.000Z",
+      "2026-07-10T11:00:00.000Z",
+      "2026-07-10T11:30:00.000Z"
+    ]);
+  });
+
+  it("filters out slots beyond the booking horizon", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      maxAdvanceDays: 3,
+      now: "2026-07-10T00:00:00.000Z"
+    });
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "consultation",
+        date: "2026-07-18"
+      })
+    ).toEqual([]);
+  });
+
   it("detects direct conflicts", () => {
     const engine = createBookingEngine({
       ...baseConfig,
@@ -369,6 +409,26 @@ describe("createBookingEngine", () => {
     ).toBe(true);
   });
 
+  it("applies booking constraints in direct slot availability checks", () => {
+    const engine = createBookingEngine({
+      services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+      availability: {
+        friday: [{ start: "09:00", end: "12:00" }]
+      },
+      slotIntervalMinutes: 30,
+      minimumNoticeMinutes: 90,
+      now: "2026-07-10T08:00:00.000Z"
+    });
+
+    expect(
+      engine.isSlotAvailable({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toBe(false);
+  });
+
   it("rejects invalid local dates", () => {
     const engine = createBookingEngine(baseConfig);
 
@@ -433,6 +493,22 @@ describe("createBookingEngine", () => {
         timeZone: "Mars/Olympus"
       })
     ).toThrow("Invalid time zone: Mars/Olympus");
+  });
+
+  it("rejects negative booking constraints", () => {
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        minimumNoticeMinutes: -30
+      })
+    ).toThrow("minimumNoticeMinutes cannot be negative.");
+
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        maxAdvanceDays: -1
+      })
+    ).toThrow("maxAdvanceDays cannot be negative.");
   });
 
   it("rejects bookings without timezone-safe date times", () => {

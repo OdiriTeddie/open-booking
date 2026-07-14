@@ -58,6 +58,9 @@ export interface BookingEngineConfig {
   bufferMinutes?: number;
   blackoutDates?: readonly LocalDate[];
   dateOverrides?: readonly DateAvailabilityOverride[];
+  minimumNoticeMinutes?: number;
+  maxAdvanceDays?: number;
+  now?: IsoDateTime;
   slotIntervalMinutes?: number;
   timeZone?: string;
 }
@@ -100,12 +103,21 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   const serviceList = [...config.services];
   const bookings = config.bookings ?? [];
   const bufferMinutes = config.bufferMinutes ?? 0;
+  const minimumNoticeMinutes = config.minimumNoticeMinutes ?? 0;
+  const maxAdvanceDays = config.maxAdvanceDays;
   const slotIntervalMinutes = config.slotIntervalMinutes ?? 15;
   const blackoutDates = new Set(config.blackoutDates ?? []);
   const dateOverrides = new Map(
     (config.dateOverrides ?? []).map((override) => [override.date, override])
   );
   const timeZone = config.timeZone ?? "UTC";
+  const hasBookingConstraints =
+    config.minimumNoticeMinutes !== undefined || config.maxAdvanceDays !== undefined;
+  const nowEpochMs = hasBookingConstraints
+    ? config.now
+      ? parseIsoDateTime(config.now)
+      : Date.now()
+    : null;
 
   function getServices(): readonly Service[] {
     return serviceList;
@@ -147,7 +159,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return uniqueSlots(
       windows.flatMap((window) =>
         generateSlotsForWindow(input.date, window, service, slotIntervalMinutes, timeZone).filter(
-          (slot) => !hasConflict(slot)
+          (slot) => !hasConflict(slot) && satisfiesBookingConstraints(slot)
         )
       )
     );
@@ -167,6 +179,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       (parseIsoDateTime(slot.end) - parseIsoDateTime(slot.start)) / 60_000;
 
     if (slotDurationMinutes !== service.durationMinutes) {
+      return false;
+    }
+
+    if (!satisfiesBookingConstraints(slot)) {
       return false;
     }
 
@@ -224,6 +240,26 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return config.availability[weekday] ?? [];
   }
 
+  function satisfiesBookingConstraints(slot: BookingSlot): boolean {
+    if (!hasBookingConstraints || nowEpochMs === null) {
+      return true;
+    }
+
+    const slotStart = parseIsoDateTime(slot.start);
+    const minimumBookableStart = addMinutes(nowEpochMs, minimumNoticeMinutes);
+
+    if (slotStart < minimumBookableStart) {
+      return false;
+    }
+
+    if (maxAdvanceDays === undefined) {
+      return true;
+    }
+
+    const latestBookableStart = addDays(nowEpochMs, maxAdvanceDays);
+    return slotStart <= latestBookableStart;
+  }
+
   return {
     getServices,
     getAvailableSlots,
@@ -263,11 +299,23 @@ function validateConfig(config: BookingEngineConfig): void {
     throw new Error("bufferMinutes cannot be negative.");
   }
 
+  if ((config.minimumNoticeMinutes ?? 0) < 0) {
+    throw new Error("minimumNoticeMinutes cannot be negative.");
+  }
+
+  if (config.maxAdvanceDays !== undefined && config.maxAdvanceDays < 0) {
+    throw new Error("maxAdvanceDays cannot be negative.");
+  }
+
   if ((config.slotIntervalMinutes ?? 15) <= 0) {
     throw new Error("slotIntervalMinutes must be positive.");
   }
 
   validateTimeZone(config.timeZone ?? "UTC");
+
+  if (config.now) {
+    parseIsoDateTime(config.now);
+  }
 
   for (const [day, windows] of Object.entries(config.availability)) {
     validateAvailabilityWindows(day, windows ?? []);
@@ -391,6 +439,10 @@ function parseTimeToMinutes(time: LocalTime): number {
 
 function addMinutes(epochMs: number, minutes: number): number {
   return epochMs + minutes * 60_000;
+}
+
+function addDays(epochMs: number, days: number): number {
+  return epochMs + days * 24 * 60 * 60_000;
 }
 
 function validateLocalDate(date: LocalDate): void {
