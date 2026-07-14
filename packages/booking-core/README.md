@@ -10,7 +10,8 @@ Pure TypeScript booking logic for Open Booking.
 - excludes conflicting bookings
 - applies buffer time
 - supports blackout dates
-- validates UTC-safe booking inputs
+- supports explicit business time zones
+- validates timezone-safe booking inputs
 
 ## What it does not do
 
@@ -37,7 +38,8 @@ const engine = createBookingEngine({
   },
   bookings: [],
   bufferMinutes: 15,
-  blackoutDates: []
+  blackoutDates: [],
+  timeZone: "Europe/London"
 });
 
 const slots = engine.getAvailableSlots({
@@ -57,3 +59,11 @@ const slots = engine.getAvailableSlots({
 - `engine.isSlotAvailable(slot)`
 - `engine.createBooking({ id, slot })`
 - `engine.addBooking(booking)`
+
+## Time Zone Model
+
+- `LocalDate` and `LocalTime` are interpreted in the configured business
+  `timeZone`.
+- booking and slot timestamps remain ISO date-times with an explicit `Z` or
+  offset.
+- if `timeZone` is omitted, the engine defaults to `UTC`.

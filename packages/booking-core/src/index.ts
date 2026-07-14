@@ -42,6 +42,7 @@ export interface DateAvailability {
   weekday: Weekday;
   isBlackoutDate: boolean;
   windows: readonly AvailabilityWindow[];
+  timeZone: string;
 }
 
 export interface BookingEngineConfig {
@@ -51,7 +52,7 @@ export interface BookingEngineConfig {
   bufferMinutes?: number;
   blackoutDates?: readonly LocalDate[];
   slotIntervalMinutes?: number;
-  timeZone?: "utc";
+  timeZone?: string;
 }
 
 export interface GetAvailableSlotsInput {
@@ -94,10 +95,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   const bufferMinutes = config.bufferMinutes ?? 0;
   const slotIntervalMinutes = config.slotIntervalMinutes ?? 15;
   const blackoutDates = new Set(config.blackoutDates ?? []);
-
-  if (config.timeZone && config.timeZone !== "utc") {
-    throw new Error("Only the 'utc' timezone mode is supported in the MVP.");
-  }
+  const timeZone = config.timeZone ?? "UTC";
 
   function getServices(): readonly Service[] {
     return serviceList;
@@ -139,7 +137,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
     return uniqueSlots(
       windows.flatMap((window) =>
-        generateSlotsForWindow(input.date, window, service, slotIntervalMinutes).filter(
+        generateSlotsForWindow(input.date, window, service, slotIntervalMinutes, timeZone).filter(
           (slot) => !hasConflict(slot)
         )
       )
@@ -155,7 +153,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       throw new Error(`Unknown service id: ${slot.serviceId}`);
     }
 
-    const date = slot.start.slice(0, 10) as LocalDate;
+    const date = getLocalDateFromIsoDateTime(slot.start, timeZone);
     const slotDurationMinutes =
       (parseIsoDateTime(slot.end) - parseIsoDateTime(slot.start)) / 60_000;
 
@@ -177,7 +175,8 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       date,
       weekday,
       isBlackoutDate: blackoutDates.has(date),
-      windows: config.availability[weekday] ?? []
+      windows: config.availability[weekday] ?? [],
+      timeZone
     };
   }
 
@@ -246,6 +245,8 @@ function validateConfig(config: BookingEngineConfig): void {
     throw new Error("slotIntervalMinutes must be positive.");
   }
 
+  validateTimeZone(config.timeZone ?? "UTC");
+
   for (const [day, windows] of Object.entries(config.availability)) {
     for (const window of windows ?? []) {
       if (parseTimeToMinutes(window.start) >= parseTimeToMinutes(window.end)) {
@@ -277,7 +278,8 @@ function generateSlotsForWindow(
   date: LocalDate,
   window: AvailabilityWindow,
   service: Service,
-  intervalMinutes: number
+  intervalMinutes: number,
+  timeZone: string
 ): BookingSlot[] {
   const slots: BookingSlot[] = [];
   const windowStart = parseTimeToMinutes(window.start);
@@ -288,8 +290,8 @@ function generateSlotsForWindow(
     startMinutes + service.durationMinutes <= windowEnd;
     startMinutes += intervalMinutes
   ) {
-    const start = dateTimeFromLocalParts(date, startMinutes);
-    const end = dateTimeFromLocalParts(date, startMinutes + service.durationMinutes);
+    const start = dateTimeFromLocalParts(date, startMinutes, timeZone);
+    const end = dateTimeFromLocalParts(date, startMinutes + service.durationMinutes, timeZone);
 
     slots.push({
       serviceId: service.id,
@@ -310,10 +312,19 @@ function dateFromUtcDate(date: LocalDate): Date {
   return new Date(`${date}T00:00:00.000Z`);
 }
 
-function dateTimeFromLocalParts(date: LocalDate, minutesAfterMidnight: number): Date {
-  const day = dateFromUtcDate(date);
-  day.setUTCMinutes(minutesAfterMidnight);
-  return day;
+function dateTimeFromLocalParts(
+  date: LocalDate,
+  minutesAfterMidnight: number,
+  timeZone: string
+): Date {
+  const [yearRaw, monthRaw, dayRaw] = date.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const hours = Math.floor(minutesAfterMidnight / 60);
+  const minutes = minutesAfterMidnight % 60;
+
+  return new Date(zonedDateTimeToUtcEpochMs({ year, month, day, hours, minutes }, timeZone));
 }
 
 function parseTimeToMinutes(time: LocalTime): number {
@@ -352,6 +363,14 @@ function validateLocalDate(date: LocalDate): void {
   }
 }
 
+function validateTimeZone(timeZone: string): void {
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone }).format(new Date());
+  } catch {
+    throw new Error(`Invalid time zone: ${timeZone}`);
+  }
+}
+
 function parseIsoDateTime(value: IsoDateTime): number {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || !/(Z|[+-]\d{2}:\d{2})$/.test(value)) {
     throw new Error(`Invalid ISO date time: ${value}`);
@@ -364,6 +383,13 @@ function parseIsoDateTime(value: IsoDateTime): number {
   }
 
   return epochMs;
+}
+
+function getLocalDateFromIsoDateTime(value: IsoDateTime, timeZone: string): LocalDate {
+  const date = new Date(parseIsoDateTime(value));
+  const parts = getDateTimeParts(date, timeZone);
+
+  return `${parts.year}-${parts.month}-${parts.day}` as LocalDate;
 }
 
 function validateSlot(slot: BookingSlot): void {
@@ -385,4 +411,110 @@ function uniqueSlots(slots: BookingSlot[]): BookingSlot[] {
     seen.add(key);
     return true;
   });
+}
+
+function zonedDateTimeToUtcEpochMs(
+  localDateTime: {
+    year: number;
+    month: number;
+    day: number;
+    hours: number;
+    minutes: number;
+  },
+  timeZone: string
+): number {
+  const utcGuess = Date.UTC(
+    localDateTime.year,
+    localDateTime.month - 1,
+    localDateTime.day,
+    localDateTime.hours,
+    localDateTime.minutes,
+    0,
+    0
+  );
+
+  let candidate = utcGuess - getTimeZoneOffsetMs(utcGuess, timeZone);
+  candidate = utcGuess - getTimeZoneOffsetMs(candidate, timeZone);
+
+  if (matchesLocalDateTime(candidate, localDateTime, timeZone)) {
+    return candidate;
+  }
+
+  const fallbackCandidate = candidate + 60 * 60_000;
+
+  if (matchesLocalDateTime(fallbackCandidate, localDateTime, timeZone)) {
+    return fallbackCandidate;
+  }
+
+  throw new Error(
+    `Local time ${formatLocalDateTime(localDateTime)} does not exist in time zone ${timeZone}`
+  );
+}
+
+function getTimeZoneOffsetMs(epochMs: number, timeZone: string): number {
+  const parts = getDateTimeParts(new Date(epochMs), timeZone);
+  const reconstructedUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+    0
+  );
+
+  return reconstructedUtc - epochMs;
+}
+
+function getDateTimeParts(date: Date, timeZone: string): Record<string, string> {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+
+  return formatter.formatToParts(date).reduce<Record<string, string>>((accumulator, part) => {
+    if (part.type !== "literal") {
+      accumulator[part.type] = part.value;
+    }
+
+    return accumulator;
+  }, {});
+}
+
+function matchesLocalDateTime(
+  epochMs: number,
+  localDateTime: {
+    year: number;
+    month: number;
+    day: number;
+    hours: number;
+    minutes: number;
+  },
+  timeZone: string
+): boolean {
+  const parts = getDateTimeParts(new Date(epochMs), timeZone);
+
+  return (
+    Number(parts.year) === localDateTime.year &&
+    Number(parts.month) === localDateTime.month &&
+    Number(parts.day) === localDateTime.day &&
+    Number(parts.hour) === localDateTime.hours &&
+    Number(parts.minute) === localDateTime.minutes
+  );
+}
+
+function formatLocalDateTime(localDateTime: {
+  year: number;
+  month: number;
+  day: number;
+  hours: number;
+  minutes: number;
+}): string {
+  return `${String(localDateTime.year).padStart(4, "0")}-${String(localDateTime.month).padStart(2, "0")}-${String(localDateTime.day).padStart(2, "0")}T${String(localDateTime.hours).padStart(2, "0")}:${String(localDateTime.minutes).padStart(2, "0")}`;
 }

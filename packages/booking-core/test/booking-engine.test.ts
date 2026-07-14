@@ -132,7 +132,8 @@ describe("createBookingEngine", () => {
       date: "2026-07-10",
       weekday: "friday",
       isBlackoutDate: true,
-      windows: [{ start: "09:00", end: "12:00" }]
+      windows: [{ start: "09:00", end: "12:00" }],
+      timeZone: "UTC"
     });
   });
 
@@ -261,6 +262,48 @@ describe("createBookingEngine", () => {
     ]);
   });
 
+  it("generates slots in a non-UTC business time zone", () => {
+    const engine = createBookingEngine({
+      services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+      availability: {
+        friday: [{ start: "09:00", end: "11:00" }]
+      },
+      slotIntervalMinutes: 30,
+      timeZone: "Europe/London"
+    });
+
+    const slots = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    expect(slots.map((slot) => slot.start)).toEqual([
+      "2026-07-10T08:00:00.000Z",
+      "2026-07-10T08:30:00.000Z",
+      "2026-07-10T09:00:00.000Z",
+      "2026-07-10T09:30:00.000Z"
+    ]);
+  });
+
+  it("evaluates slot availability using the configured local date", () => {
+    const engine = createBookingEngine({
+      services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+      availability: {
+        friday: [{ start: "00:00", end: "02:00" }]
+      },
+      slotIntervalMinutes: 30,
+      timeZone: "Europe/London"
+    });
+
+    expect(
+      engine.isSlotAvailable({
+        serviceId: "consultation",
+        start: "2026-07-09T23:00:00.000Z",
+        end: "2026-07-09T23:30:00.000Z"
+      })
+    ).toBe(true);
+  });
+
   it("rejects invalid local dates", () => {
     const engine = createBookingEngine(baseConfig);
 
@@ -281,6 +324,18 @@ describe("createBookingEngine", () => {
         }
       })
     ).toThrow("Invalid time: 9:00");
+  });
+
+  it("rejects invalid time zones", () => {
+    expect(() =>
+      createBookingEngine({
+        services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+        availability: {
+          friday: [{ start: "09:00", end: "17:00" }]
+        },
+        timeZone: "Mars/Olympus"
+      })
+    ).toThrow("Invalid time zone: Mars/Olympus");
   });
 
   it("rejects bookings without timezone-safe date times", () => {
