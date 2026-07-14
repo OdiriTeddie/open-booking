@@ -7,6 +7,7 @@ Pure TypeScript booking logic for Open Booking.
 - defines services and durations
 - models weekly business availability
 - supports date-specific availability overrides
+- supports bounded recurring availability and blackout rules
 - generates booking slots
 - excludes conflicting bookings
 - applies buffer time
@@ -42,6 +43,21 @@ const engine = createBookingEngine({
     {
       date: "2026-07-14",
       windows: [{ start: "12:00", end: "16:00" }]
+    }
+  ],
+  recurringAvailability: [
+    {
+      frequency: "weekly",
+      weekdays: ["monday"],
+      startDate: "2026-07-01",
+      endDate: "2026-08-31",
+      windows: [{ start: "18:00", end: "20:00" }]
+    }
+  ],
+  recurringBlackoutRules: [
+    {
+      frequency: "weekly",
+      weekdays: ["sunday"]
     }
   ],
   bookings: [],
@@ -80,8 +96,20 @@ const slots = engine.getAvailableSlots({
 
 ## Availability Precedence
 
+- `recurringAvailability` adds extra windows to the base weekly availability
+  when a rule matches a date.
 - `dateOverrides` replace weekly availability for the matching date.
-- `blackoutDates` still return no slots, even if a date override exists.
+- `blackoutDates` and `recurringBlackoutRules` still return no slots, even if a
+  date override exists.
+
+## Recurrence Model
+
+- recurring rules currently support `frequency: "weekly"`.
+- each rule can be bounded with `startDate` and `endDate`.
+- recurring availability matches by weekday and adds windows for matching
+  dates.
+- recurring blackout rules match by weekday and suppress slot generation for
+  matching dates.
 
 ## Booking Constraints
 

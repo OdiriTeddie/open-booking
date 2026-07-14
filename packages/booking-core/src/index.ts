@@ -29,6 +29,21 @@ export interface DateAvailabilityOverride {
   windows: readonly AvailabilityWindow[];
 }
 
+export interface RecurringAvailabilityRule {
+  frequency: "weekly";
+  weekdays: readonly Weekday[];
+  windows: readonly AvailabilityWindow[];
+  startDate?: LocalDate;
+  endDate?: LocalDate;
+}
+
+export interface RecurringBlackoutRule {
+  frequency: "weekly";
+  weekdays: readonly Weekday[];
+  startDate?: LocalDate;
+  endDate?: LocalDate;
+}
+
 export interface Booking {
   id: string;
   serviceId: string;
@@ -46,7 +61,9 @@ export interface DateAvailability {
   date: LocalDate;
   weekday: Weekday;
   isBlackoutDate: boolean;
+  isRecurringBlackout: boolean;
   isOverride: boolean;
+  hasRecurringAvailability: boolean;
   windows: readonly AvailabilityWindow[];
   timeZone: string;
 }
@@ -58,6 +75,8 @@ export interface BookingEngineConfig {
   bufferMinutes?: number;
   blackoutDates?: readonly LocalDate[];
   dateOverrides?: readonly DateAvailabilityOverride[];
+  recurringAvailability?: readonly RecurringAvailabilityRule[];
+  recurringBlackoutRules?: readonly RecurringBlackoutRule[];
   minimumNoticeMinutes?: number;
   maxAdvanceDays?: number;
   now?: IsoDateTime;
@@ -110,6 +129,8 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   const dateOverrides = new Map(
     (config.dateOverrides ?? []).map((override) => [override.date, override])
   );
+  const recurringAvailability = config.recurringAvailability ?? [];
+  const recurringBlackoutRules = config.recurringBlackoutRules ?? [];
   const timeZone = config.timeZone ?? "UTC";
   const hasBookingConstraints =
     config.minimumNoticeMinutes !== undefined || config.maxAdvanceDays !== undefined;
@@ -150,7 +171,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       throw new Error(`Unknown service id: ${input.serviceId}`);
     }
 
-    if (blackoutDates.has(input.date)) {
+    if (isBlackoutDate(input.date)) {
       return [];
     }
 
@@ -196,13 +217,16 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
     const weekday = getWeekday(date);
     const override = dateOverrides.get(date);
+    const recurringWindows = getRecurringAvailabilityWindows(date);
 
     return {
       date,
       weekday,
       isBlackoutDate: blackoutDates.has(date),
+      isRecurringBlackout: matchesRecurringBlackoutRule(date),
       isOverride: Boolean(override),
-      windows: override?.windows ?? config.availability[weekday] ?? [],
+      hasRecurringAvailability: recurringWindows.length > 0,
+      windows: override?.windows ?? mergeAvailabilityWindows(config.availability[weekday] ?? [], recurringWindows),
       timeZone
     };
   }
@@ -237,7 +261,28 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     }
 
     const weekday = getWeekday(date);
-    return config.availability[weekday] ?? [];
+    return mergeAvailabilityWindows(
+      config.availability[weekday] ?? [],
+      getRecurringAvailabilityWindows(date)
+    );
+  }
+
+  function getRecurringAvailabilityWindows(date: LocalDate): readonly AvailabilityWindow[] {
+    const weekday = getWeekday(date);
+
+    return recurringAvailability.flatMap((rule) =>
+      matchesWeeklyRule(date, weekday, rule) ? rule.windows : []
+    );
+  }
+
+  function matchesRecurringBlackoutRule(date: LocalDate): boolean {
+    const weekday = getWeekday(date);
+
+    return recurringBlackoutRules.some((rule) => matchesWeeklyRule(date, weekday, rule));
+  }
+
+  function isBlackoutDate(date: LocalDate): boolean {
+    return blackoutDates.has(date) || matchesRecurringBlackoutRule(date);
   }
 
   function satisfiesBookingConstraints(slot: BookingSlot): boolean {
@@ -334,6 +379,15 @@ function validateConfig(config: BookingEngineConfig): void {
     validateAvailabilityWindows(`date override ${override.date}`, override.windows);
   }
 
+  for (const rule of config.recurringAvailability ?? []) {
+    validateRecurringWeeklyRule(rule, "recurring availability");
+    validateAvailabilityWindows("recurring availability", rule.windows);
+  }
+
+  for (const rule of config.recurringBlackoutRules ?? []) {
+    validateRecurringWeeklyRule(rule, "recurring blackout rule");
+  }
+
   for (const booking of config.bookings ?? []) {
     validateBooking(booking, serviceIds);
   }
@@ -414,6 +468,45 @@ function validateAvailabilityWindows(
     if (parseTimeToMinutes(window.start) >= parseTimeToMinutes(window.end)) {
       throw new Error(`Availability window for ${label} must end after it starts.`);
     }
+  }
+}
+
+function validateRecurringWeeklyRule(
+  rule: RecurringAvailabilityRule | RecurringBlackoutRule,
+  label: string
+): void {
+  if (rule.frequency !== "weekly") {
+    throw new Error(`Unsupported recurrence frequency for ${label}: ${rule.frequency}`);
+  }
+
+  if (rule.weekdays.length === 0) {
+    throw new Error(`${label} must include at least one weekday.`);
+  }
+
+  const seenWeekdays = new Set<Weekday>();
+
+  for (const weekday of rule.weekdays) {
+    if (!weekdays.includes(weekday)) {
+      throw new Error(`Invalid weekday in ${label}: ${weekday}`);
+    }
+
+    if (seenWeekdays.has(weekday)) {
+      throw new Error(`Duplicate weekday in ${label}: ${weekday}`);
+    }
+
+    seenWeekdays.add(weekday);
+  }
+
+  if (rule.startDate) {
+    validateLocalDate(rule.startDate);
+  }
+
+  if (rule.endDate) {
+    validateLocalDate(rule.endDate);
+  }
+
+  if (rule.startDate && rule.endDate && rule.startDate > rule.endDate) {
+    throw new Error(`${label} startDate must be on or before endDate.`);
   }
 }
 
@@ -505,6 +598,36 @@ function uniqueSlots(slots: BookingSlot[]): BookingSlot[] {
     seen.add(key);
     return true;
   });
+}
+
+function mergeAvailabilityWindows(
+  baseWindows: readonly AvailabilityWindow[],
+  recurringWindows: readonly AvailabilityWindow[]
+): AvailabilityWindow[] {
+  const seen = new Set<string>();
+
+  return [...baseWindows, ...recurringWindows].filter((window) => {
+    const key = `${window.start}:${window.end}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function matchesWeeklyRule(
+  date: LocalDate,
+  weekday: Weekday,
+  rule: RecurringAvailabilityRule | RecurringBlackoutRule
+): boolean {
+  return (
+    rule.weekdays.includes(weekday) &&
+    (rule.startDate === undefined || date >= rule.startDate) &&
+    (rule.endDate === undefined || date <= rule.endDate)
+  );
 }
 
 function zonedDateTimeToUtcEpochMs(

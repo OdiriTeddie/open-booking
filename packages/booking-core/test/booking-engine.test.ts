@@ -137,6 +137,68 @@ describe("createBookingEngine", () => {
     ).toEqual([]);
   });
 
+  it("adds recurring availability windows when a rule matches the date", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      recurringAvailability: [
+        {
+          frequency: "weekly",
+          weekdays: ["friday"],
+          startDate: "2026-07-01",
+          endDate: "2026-07-31",
+          windows: [{ start: "13:00", end: "15:00" }]
+        }
+      ]
+    });
+
+    const slots = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    expect(slots.map((slot) => slot.start)).toEqual([
+      "2026-07-10T09:00:00.000Z",
+      "2026-07-10T09:30:00.000Z",
+      "2026-07-10T10:00:00.000Z",
+      "2026-07-10T10:30:00.000Z",
+      "2026-07-10T11:00:00.000Z",
+      "2026-07-10T11:30:00.000Z",
+      "2026-07-10T13:00:00.000Z",
+      "2026-07-10T13:30:00.000Z",
+      "2026-07-10T14:00:00.000Z",
+      "2026-07-10T14:30:00.000Z"
+    ]);
+  });
+
+  it("does not apply recurring availability outside its date range", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      recurringAvailability: [
+        {
+          frequency: "weekly",
+          weekdays: ["friday"],
+          startDate: "2026-07-01",
+          endDate: "2026-07-31",
+          windows: [{ start: "13:00", end: "15:00" }]
+        }
+      ]
+    });
+
+    const slots = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-08-07"
+    });
+
+    expect(slots.map((slot) => slot.start)).toEqual([
+      "2026-08-07T09:00:00.000Z",
+      "2026-08-07T09:30:00.000Z",
+      "2026-08-07T10:00:00.000Z",
+      "2026-08-07T10:30:00.000Z",
+      "2026-08-07T11:00:00.000Z",
+      "2026-08-07T11:30:00.000Z"
+    ]);
+  });
+
   it("filters out slots inside minimum notice", () => {
     const engine = createBookingEngine({
       services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
@@ -215,7 +277,9 @@ describe("createBookingEngine", () => {
       date: "2026-07-10",
       weekday: "friday",
       isBlackoutDate: true,
+      isRecurringBlackout: false,
       isOverride: false,
+      hasRecurringAvailability: false,
       windows: [{ start: "09:00", end: "12:00" }],
       timeZone: "UTC"
     });
@@ -236,8 +300,37 @@ describe("createBookingEngine", () => {
       date: "2026-07-10",
       weekday: "friday",
       isBlackoutDate: false,
+      isRecurringBlackout: false,
       isOverride: true,
+      hasRecurringAvailability: false,
       windows: [{ start: "13:00", end: "15:00" }],
+      timeZone: "UTC"
+    });
+  });
+
+  it("returns recurring availability metadata when rules match a date", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      recurringAvailability: [
+        {
+          frequency: "weekly",
+          weekdays: ["friday"],
+          windows: [{ start: "13:00", end: "15:00" }]
+        }
+      ]
+    });
+
+    expect(engine.getAvailabilityForDate("2026-07-10")).toEqual({
+      date: "2026-07-10",
+      weekday: "friday",
+      isBlackoutDate: false,
+      isRecurringBlackout: false,
+      isOverride: false,
+      hasRecurringAvailability: true,
+      windows: [
+        { start: "09:00", end: "12:00" },
+        { start: "13:00", end: "15:00" }
+      ],
       timeZone: "UTC"
     });
   });
@@ -483,6 +576,50 @@ describe("createBookingEngine", () => {
     ).toEqual([]);
   });
 
+  it("blocks slots for recurring blackout rules", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      recurringBlackoutRules: [
+        {
+          frequency: "weekly",
+          weekdays: ["friday"],
+          startDate: "2026-07-01",
+          endDate: "2026-07-31"
+        }
+      ]
+    });
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "consultation",
+        date: "2026-07-10"
+      })
+    ).toEqual([]);
+  });
+
+  it("marks recurring blackout metadata when a recurring blackout rule matches", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      recurringBlackoutRules: [
+        {
+          frequency: "weekly",
+          weekdays: ["friday"]
+        }
+      ]
+    });
+
+    expect(engine.getAvailabilityForDate("2026-07-10")).toEqual({
+      date: "2026-07-10",
+      weekday: "friday",
+      isBlackoutDate: false,
+      isRecurringBlackout: true,
+      isOverride: false,
+      hasRecurringAvailability: false,
+      windows: [{ start: "09:00", end: "12:00" }],
+      timeZone: "UTC"
+    });
+  });
+
   it("rejects invalid time zones", () => {
     expect(() =>
       createBookingEngine({
@@ -493,6 +630,35 @@ describe("createBookingEngine", () => {
         timeZone: "Mars/Olympus"
       })
     ).toThrow("Invalid time zone: Mars/Olympus");
+  });
+
+  it("rejects invalid recurring rule ranges and duplicate weekdays", () => {
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        recurringAvailability: [
+          {
+            frequency: "weekly",
+            weekdays: ["friday", "friday"],
+            windows: [{ start: "13:00", end: "15:00" }]
+          }
+        ]
+      })
+    ).toThrow("Duplicate weekday in recurring availability: friday");
+
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        recurringBlackoutRules: [
+          {
+            frequency: "weekly",
+            weekdays: ["friday"],
+            startDate: "2026-07-31",
+            endDate: "2026-07-01"
+          }
+        ]
+      })
+    ).toThrow("recurring blackout rule startDate must be on or before endDate.");
   });
 
   it("rejects negative booking constraints", () => {
