@@ -6,6 +6,7 @@ Pure TypeScript booking logic for Open Booking.
 
 - defines services and durations
 - models weekly business availability
+- supports date-specific availability overrides
 - generates booking slots
 - excludes conflicting bookings
 - applies buffer time
@@ -36,6 +37,12 @@ const engine = createBookingEngine({
   availability: {
     monday: [{ start: "09:00", end: "17:00" }]
   },
+  dateOverrides: [
+    {
+      date: "2026-07-14",
+      windows: [{ start: "12:00", end: "16:00" }]
+    }
+  ],
   bookings: [],
   bufferMinutes: 15,
   blackoutDates: [],
@@ -67,3 +74,8 @@ const slots = engine.getAvailableSlots({
 - booking and slot timestamps remain ISO date-times with an explicit `Z` or
   offset.
 - if `timeZone` is omitted, the engine defaults to `UTC`.
+
+## Availability Precedence
+
+- `dateOverrides` replace weekly availability for the matching date.
+- `blackoutDates` still return no slots, even if a date override exists.

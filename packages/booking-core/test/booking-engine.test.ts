@@ -94,6 +94,49 @@ describe("createBookingEngine", () => {
     ).toEqual([]);
   });
 
+  it("uses date overrides instead of weekly availability", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      dateOverrides: [
+        {
+          date: "2026-07-10",
+          windows: [{ start: "13:00", end: "15:00" }]
+        }
+      ]
+    });
+
+    const slots = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    expect(slots.map((slot) => slot.start)).toEqual([
+      "2026-07-10T13:00:00.000Z",
+      "2026-07-10T13:30:00.000Z",
+      "2026-07-10T14:00:00.000Z",
+      "2026-07-10T14:30:00.000Z"
+    ]);
+  });
+
+  it("returns no slots when a date override has no windows", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      dateOverrides: [
+        {
+          date: "2026-07-10",
+          windows: []
+        }
+      ]
+    });
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "consultation",
+        date: "2026-07-10"
+      })
+    ).toEqual([]);
+  });
+
   it("detects direct conflicts", () => {
     const engine = createBookingEngine({
       ...baseConfig,
@@ -132,7 +175,29 @@ describe("createBookingEngine", () => {
       date: "2026-07-10",
       weekday: "friday",
       isBlackoutDate: true,
+      isOverride: false,
       windows: [{ start: "09:00", end: "12:00" }],
+      timeZone: "UTC"
+    });
+  });
+
+  it("returns override metadata when date-specific availability exists", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      dateOverrides: [
+        {
+          date: "2026-07-10",
+          windows: [{ start: "13:00", end: "15:00" }]
+        }
+      ]
+    });
+
+    expect(engine.getAvailabilityForDate("2026-07-10")).toEqual({
+      date: "2026-07-10",
+      weekday: "friday",
+      isBlackoutDate: false,
+      isOverride: true,
+      windows: [{ start: "13:00", end: "15:00" }],
       timeZone: "UTC"
     });
   });
@@ -324,6 +389,38 @@ describe("createBookingEngine", () => {
         }
       })
     ).toThrow("Invalid time: 9:00");
+  });
+
+  it("rejects duplicate date overrides", () => {
+    expect(() =>
+      createBookingEngine({
+        ...baseConfig,
+        dateOverrides: [
+          { date: "2026-07-10", windows: [{ start: "13:00", end: "15:00" }] },
+          { date: "2026-07-10", windows: [{ start: "15:00", end: "17:00" }] }
+        ]
+      })
+    ).toThrow("Duplicate date override: 2026-07-10");
+  });
+
+  it("keeps blackout dates as a stronger rule than date overrides", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      blackoutDates: ["2026-07-10"],
+      dateOverrides: [
+        {
+          date: "2026-07-10",
+          windows: [{ start: "13:00", end: "15:00" }]
+        }
+      ]
+    });
+
+    expect(
+      engine.getAvailableSlots({
+        serviceId: "consultation",
+        date: "2026-07-10"
+      })
+    ).toEqual([]);
   });
 
   it("rejects invalid time zones", () => {

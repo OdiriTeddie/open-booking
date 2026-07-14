@@ -24,6 +24,11 @@ export interface AvailabilityWindow {
 
 export type WeeklyAvailability = Partial<Record<Weekday, readonly AvailabilityWindow[]>>;
 
+export interface DateAvailabilityOverride {
+  date: LocalDate;
+  windows: readonly AvailabilityWindow[];
+}
+
 export interface Booking {
   id: string;
   serviceId: string;
@@ -41,6 +46,7 @@ export interface DateAvailability {
   date: LocalDate;
   weekday: Weekday;
   isBlackoutDate: boolean;
+  isOverride: boolean;
   windows: readonly AvailabilityWindow[];
   timeZone: string;
 }
@@ -51,6 +57,7 @@ export interface BookingEngineConfig {
   bookings?: readonly Booking[];
   bufferMinutes?: number;
   blackoutDates?: readonly LocalDate[];
+  dateOverrides?: readonly DateAvailabilityOverride[];
   slotIntervalMinutes?: number;
   timeZone?: string;
 }
@@ -95,6 +102,9 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   const bufferMinutes = config.bufferMinutes ?? 0;
   const slotIntervalMinutes = config.slotIntervalMinutes ?? 15;
   const blackoutDates = new Set(config.blackoutDates ?? []);
+  const dateOverrides = new Map(
+    (config.dateOverrides ?? []).map((override) => [override.date, override])
+  );
   const timeZone = config.timeZone ?? "UTC";
 
   function getServices(): readonly Service[] {
@@ -132,8 +142,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       return [];
     }
 
-    const weekday = getWeekday(input.date);
-    const windows = config.availability[weekday] ?? [];
+    const windows = getWindowsForDate(input.date);
 
     return uniqueSlots(
       windows.flatMap((window) =>
@@ -170,12 +179,14 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     validateLocalDate(date);
 
     const weekday = getWeekday(date);
+    const override = dateOverrides.get(date);
 
     return {
       date,
       weekday,
       isBlackoutDate: blackoutDates.has(date),
-      windows: config.availability[weekday] ?? [],
+      isOverride: Boolean(override),
+      windows: override?.windows ?? config.availability[weekday] ?? [],
       timeZone
     };
   }
@@ -200,6 +211,17 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       ...config,
       bookings: [...bookings, booking]
     });
+  }
+
+  function getWindowsForDate(date: LocalDate): readonly AvailabilityWindow[] {
+    const override = dateOverrides.get(date);
+
+    if (override) {
+      return override.windows;
+    }
+
+    const weekday = getWeekday(date);
+    return config.availability[weekday] ?? [];
   }
 
   return {
@@ -248,11 +270,20 @@ function validateConfig(config: BookingEngineConfig): void {
   validateTimeZone(config.timeZone ?? "UTC");
 
   for (const [day, windows] of Object.entries(config.availability)) {
-    for (const window of windows ?? []) {
-      if (parseTimeToMinutes(window.start) >= parseTimeToMinutes(window.end)) {
-        throw new Error(`Availability window for ${day} must end after it starts.`);
-      }
+    validateAvailabilityWindows(day, windows ?? []);
+  }
+
+  const overrideDates = new Set<LocalDate>();
+
+  for (const override of config.dateOverrides ?? []) {
+    validateLocalDate(override.date);
+
+    if (overrideDates.has(override.date)) {
+      throw new Error(`Duplicate date override: ${override.date}`);
     }
+
+    overrideDates.add(override.date);
+    validateAvailabilityWindows(`date override ${override.date}`, override.windows);
   }
 
   for (const booking of config.bookings ?? []) {
@@ -325,6 +356,17 @@ function dateTimeFromLocalParts(
   const minutes = minutesAfterMidnight % 60;
 
   return new Date(zonedDateTimeToUtcEpochMs({ year, month, day, hours, minutes }, timeZone));
+}
+
+function validateAvailabilityWindows(
+  label: string,
+  windows: readonly AvailabilityWindow[]
+): void {
+  for (const window of windows) {
+    if (parseTimeToMinutes(window.start) >= parseTimeToMinutes(window.end)) {
+      throw new Error(`Availability window for ${label} must end after it starts.`);
+    }
+  }
 }
 
 function parseTimeToMinutes(time: LocalTime): number {
