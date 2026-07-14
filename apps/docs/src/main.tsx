@@ -12,6 +12,12 @@ import {
 import "@openbooking/ui/styles.css";
 import "./styles.css";
 
+const diagnosticDates = {
+  mixed: "2026-07-10",
+  capacity: "2026-07-11",
+  blackout: "2026-07-25"
+} as const;
+
 const services = [
   { id: "consultation", name: "Consultation", durationMinutes: 30 },
   { id: "portrait-session", name: "Portrait Session", durationMinutes: 60 },
@@ -38,6 +44,18 @@ const bookings = [
     serviceId: "consultation",
     start: "2026-07-11T11:30:00.000Z",
     end: "2026-07-11T12:00:00.000Z"
+  },
+  {
+    id: "booking-3",
+    serviceId: "brand-shoot",
+    start: "2026-07-11T10:00:00.000Z",
+    end: "2026-07-11T11:30:00.000Z"
+  },
+  {
+    id: "booking-4",
+    serviceId: "portrait-session",
+    start: "2026-07-11T12:00:00.000Z",
+    end: "2026-07-11T13:00:00.000Z"
   }
 ];
 
@@ -48,9 +66,14 @@ function App() {
     availability,
     bookings,
     bufferMinutes: 15,
+    bookingRules: {
+      maxBookingsPerDay: 3
+    },
     blackoutDates: ["2026-07-25"],
+    minimumNoticeMinutes: 120,
+    now: "2026-07-10T08:15:00.000Z",
     slotIntervalMinutes: 30,
-    initialDate: "2026-07-10"
+    initialDate: diagnosticDates.mixed
   });
 
   const selectedService = useMemo(
@@ -64,13 +87,23 @@ function App() {
         availability,
         bookings,
         bufferMinutes: 15,
+        bookingRules: {
+          maxBookingsPerDay: 3
+        },
         blackoutDates: ["2026-07-25"],
+        minimumNoticeMinutes: 120,
+        now: "2026-07-10T08:15:00.000Z",
         slotIntervalMinutes: 30
       }),
     []
   );
   const availabilityForDate = engine.getAvailabilityForDate(booking.selectedDate);
   const unavailableSlots = booking.slotsWithAvailability.filter((slot) => !slot.available);
+  const blockedReasonCounts = unavailableSlots.reduce<Record<string, number>>((accumulator, slot) => {
+    const reason = slot.reason ?? "unknown";
+    accumulator[reason] = (accumulator[reason] ?? 0) + 1;
+    return accumulator;
+  }, {});
   const liveCoreSnippet = `import { createBookingEngine } from "@openbooking/core";
 
 const engine = createBookingEngine({
@@ -78,7 +111,10 @@ const engine = createBookingEngine({
   availability,
   bookings,
   bufferMinutes: 15,
-  blackoutDates: ["2026-07-25"]
+  bookingRules: { maxBookingsPerDay: 3 },
+  blackoutDates: ["2026-07-25"],
+  minimumNoticeMinutes: 120,
+  now: "2026-07-10T08:15:00.000Z"
 });
 
 const slotAvailability = engine.getSlotsWithAvailability({
@@ -90,7 +126,10 @@ const slotAvailability = engine.getSlotsWithAvailability({
   availability,
   bookings,
   bufferMinutes: 15,
+  bookingRules: { maxBookingsPerDay: 3 },
   blackoutDates: ["2026-07-25"],
+  minimumNoticeMinutes: 120,
+  now: "2026-07-10T08:15:00.000Z",
   initialDate: "${booking.selectedDate}"
 });`;
 
@@ -162,8 +201,37 @@ const slotAvailability = engine.getSlotsWithAvailability({
 
           <div className="docs-panel">
             <div className="section-heading">
-              <p>Live API</p>
-              <h2>Core output for the current demo state</h2>
+              <p>Diagnostics</p>
+              <h2>Preset dates that expose blocked states</h2>
+            </div>
+            <div className="scenario-row">
+              <button
+                className="scenario-chip"
+                data-selected={booking.selectedDate === diagnosticDates.mixed}
+                onClick={() => booking.selectDate(diagnosticDates.mixed)}
+                type="button"
+              >
+                July 10
+                <small>Notice + conflicts</small>
+              </button>
+              <button
+                className="scenario-chip"
+                data-selected={booking.selectedDate === diagnosticDates.capacity}
+                onClick={() => booking.selectDate(diagnosticDates.capacity)}
+                type="button"
+              >
+                July 11
+                <small>Daily cap reached</small>
+              </button>
+              <button
+                className="scenario-chip"
+                data-selected={booking.selectedDate === diagnosticDates.blackout}
+                onClick={() => booking.selectDate(diagnosticDates.blackout)}
+                type="button"
+              >
+                July 25
+                <small>Blackout date</small>
+              </button>
             </div>
             <div className="inspector-grid">
               <div className="inspector-card">
@@ -184,6 +252,22 @@ const slotAvailability = engine.getSlotsWithAvailability({
                 <span>First blocked reason</span>
                 <strong>{unavailableSlots[0]?.reason ?? "None"}</strong>
               </div>
+            </div>
+            <div className="reason-list" aria-label="Blocked slot reasons">
+              {Object.entries(blockedReasonCounts).length === 0 ? (
+                <p className="reason-empty">
+                  {availabilityForDate.isBlackoutDate
+                    ? "This date is fully blocked by a blackout rule."
+                    : "No blocked slot reasons for the current date."}
+                </p>
+              ) : (
+                Object.entries(blockedReasonCounts).map(([reason, count]) => (
+                  <div className="reason-row" key={reason}>
+                    <span>{formatReasonLabel(reason)}</span>
+                    <strong>{count}</strong>
+                  </div>
+                ))
+              )}
             </div>
             <div className="code-grid">
               <article className="code-panel">
@@ -254,6 +338,31 @@ const slotAvailability = engine.getSlotsWithAvailability({
       </section>
     </main>
   );
+}
+
+function formatReasonLabel(reason: string): string {
+  switch (reason) {
+    case "minimum-notice":
+      return "Minimum notice";
+    case "conflict":
+      return "Existing conflict";
+    case "max-bookings-per-day":
+      return "Daily booking cap";
+    case "blackout-date":
+      return "Blackout date";
+    case "outside-availability":
+      return "Outside business hours";
+    case "max-advance":
+      return "Advance window";
+    case "max-bookings-per-service-per-day":
+      return "Service booking cap";
+    case "invalid-slot-duration":
+      return "Duration mismatch";
+    case "unknown-service":
+      return "Unknown service";
+    default:
+      return reason;
+  }
 }
 
 createRoot(document.getElementById("root")!).render(

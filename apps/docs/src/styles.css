@@ -163,6 +163,16 @@ code {
   gap: 14px;
 }
 
+.scenario-row,
+.reason-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scenario-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .comparison-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -199,6 +209,49 @@ code {
   display: grid;
   gap: 0.45rem;
   padding: 14px;
+}
+
+.scenario-chip,
+.reason-row {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.scenario-chip {
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  gap: 0.3rem;
+  padding: 14px;
+  text-align: left;
+}
+
+.scenario-chip small,
+.reason-empty {
+  color: var(--muted);
+}
+
+.scenario-chip[data-selected="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.reason-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.reason-row span {
+  color: var(--muted);
+}
+
+.reason-empty {
+  margin: 0;
+  padding: 0.25rem 0;
 }
 
 .code-grid {
@@ -257,7 +310,8 @@ code {
   .hero-band,
   .content-grid,
   .comparison-grid,
-  .inspector-grid {
+  .inspector-grid,
+  .scenario-row {
     grid-template-columns: 1fr;
   }
 }
