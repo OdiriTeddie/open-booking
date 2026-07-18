@@ -4,54 +4,22 @@ import { ComparisonCard } from "../components/ComparisonCard";
 import { ReferenceGroup } from "../components/ReferenceGroup";
 import { SectionHeading } from "../components/SectionHeading";
 import { coreApiGroups, reactApiGroups } from "../data";
+import {
+  buildApiReferenceCoreSnippet,
+  buildApiReferenceReactSnippet
+} from "../snippets";
 
 export function ApiReferencePage() {
-  const coreExampleSnippet = `import {
-  createBookingEngine,
-  confirmBookingWithRetry
-} from "@openbooking/core";
+  const coreExampleSnippet = buildApiReferenceCoreSnippet({
+    blackoutDate: demoDateConfig.diagnostics.blackout,
+    browseNow: demoDateConfig.clock.browseNow,
+    confirmNow: demoDateConfig.clock.confirmNow,
+    capacityDate: demoDateConfig.diagnostics.capacity
+  });
 
-const engine = createBookingEngine({
-  services,
-  availability,
-  bookings,
-  bufferMinutes: 15,
-  blackoutDates: ["${demoDateConfig.diagnostics.blackout}"],
-  minimumNoticeMinutes: 120,
-  now: "${demoDateConfig.clock.browseNow}"
-});
-
-const slots = engine.getSlotsWithAvailability({
-  serviceId: "consultation",
-  date: "${demoDateConfig.diagnostics.capacity}"
-});
-
-const confirmation = await confirmBookingWithRetry({
-  services,
-  availability,
-  repository,
-  bookingId: "booking-42",
-  holdId: "hold-42",
-  slot: slots[0],
-  now: "${demoDateConfig.clock.confirmNow}"
-});`;
-
-  const reactExampleSnippet = `import {
-  useBooking,
-  useBookingConfirmation
-} from "@openbooking/react";
-
-const booking = useBooking({
-  services,
-  availability,
-  bookings,
-  initialDate: "${demoDateConfig.diagnostics.capacity}"
-});
-
-const confirmation = useBookingConfirmation({
-  createHold: (input) => api.createHold(input),
-  confirmHeldBooking: (input) => api.confirmHeldBooking(input)
-});`;
+  const reactExampleSnippet = buildApiReferenceReactSnippet(
+    demoDateConfig.diagnostics.capacity
+  );
 
   return (
     <section className="docs-stack" aria-label="API reference">

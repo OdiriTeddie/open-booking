@@ -2,6 +2,12 @@ import { createBookingEngine } from "@openbooking/core";
 import { useMemo, useState } from "react";
 import { useBooking, useBookingConfirmation } from "@openbooking/react";
 import { availability, bookings, demoDateConfig, services } from "../data";
+import {
+  buildCoreAvailabilitySnippet,
+  buildReactBookingSnippet,
+  buildReactConfirmationSnippet,
+  buildServerFlowSnippet
+} from "../snippets";
 
 export function useDemoBookingModel() {
   const [message, setMessage] = useState("");
@@ -77,50 +83,19 @@ export function useDemoBookingModel() {
   }, {});
 
   const snippets = {
-    liveCore: `import { createBookingEngine } from "@openbooking/core";
-
-const engine = createBookingEngine({
-  services,
-  availability,
-  bookings,
-  bufferMinutes: 15,
-  bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["${demoDateConfig.diagnostics.blackout}"],
-  minimumNoticeMinutes: 120,
-  now: "${demoDateConfig.clock.browseNow}"
-});
-
-const slotAvailability = engine.getSlotsWithAvailability({
-  serviceId: "${booking.selectedServiceId}",
-  date: "${booking.selectedDate}"
-});`,
-    liveReact: `const booking = useBooking({
-  services,
-  availability,
-  bookings,
-  bufferMinutes: 15,
-  bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["${demoDateConfig.diagnostics.blackout}"],
-  minimumNoticeMinutes: 120,
-  now: "${demoDateConfig.clock.browseNow}",
-  initialDate: "${booking.selectedDate}"
-});`,
-    reactApi: `const confirmation = useBookingConfirmation({
-  createHold: (input) => api.createHold(input),
-  confirmHeldBooking: (input) => api.confirmHeldBooking(input)
-});`,
-    serverFlow: `import { confirmBookingWithRetry } from "@openbooking/core";
-
-const confirmation = await confirmBookingWithRetry({
-  services,
-  availability,
-  repository,
-  bookingId: "booking-42",
-  holdId: "hold-42",
-  slot,
-  now: "${demoDateConfig.clock.confirmNow}",
-  maxVersionRetries: 1
-});`
+    liveCore: buildCoreAvailabilitySnippet({
+      blackoutDate: demoDateConfig.diagnostics.blackout,
+      browseNow: demoDateConfig.clock.browseNow,
+      serviceId: booking.selectedServiceId,
+      date: booking.selectedDate
+    }),
+    liveReact: buildReactBookingSnippet({
+      blackoutDate: demoDateConfig.diagnostics.blackout,
+      browseNow: demoDateConfig.clock.browseNow,
+      initialDate: booking.selectedDate
+    }),
+    reactApi: buildReactConfirmationSnippet(),
+    serverFlow: buildServerFlowSnippet(demoDateConfig.clock.confirmNow)
   };
 
   async function submitBooking(name: string): Promise<void> {
