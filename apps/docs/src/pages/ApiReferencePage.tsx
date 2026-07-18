@@ -1,3 +1,6 @@
+import { CodePanel } from "../components/CodePanel";
+import { ComparisonCard } from "../components/ComparisonCard";
+import { SectionHeading } from "../components/SectionHeading";
 import { coreApiGroups, reactApiGroups } from "../data";
 
 export function ApiReferencePage() {
@@ -51,34 +54,22 @@ const confirmation = useBookingConfirmation({
   return (
     <section className="docs-stack" aria-label="API reference">
       <div className="docs-panel">
-        <div className="section-heading">
-          <p>API reference</p>
-          <h2>Core and React surface area</h2>
-        </div>
+        <SectionHeading eyebrow="API reference" title="Core and React surface area" />
         <div className="comparison-grid">
-          <article className="comparison-card">
-            <h3>@openbooking/core</h3>
-            <p>
-              Headless scheduling, diagnostics, repository hydration, and final
-              confirmation flows.
-            </p>
-          </article>
-          <article className="comparison-card">
-            <h3>@openbooking/react</h3>
-            <p>
-              Hooks and starter UI that adapt the core engine for product-facing booking
-              flows.
-            </p>
-          </article>
+          <ComparisonCard title="@openbooking/core">
+            Headless scheduling, diagnostics, repository hydration, and final
+            confirmation flows.
+          </ComparisonCard>
+          <ComparisonCard title="@openbooking/react">
+            Hooks and starter UI that adapt the core engine for product-facing booking
+            flows.
+          </ComparisonCard>
         </div>
       </div>
 
       <section className="reference-grid">
         <div className="docs-panel">
-          <div className="section-heading">
-            <p>Core</p>
-            <h2>@openbooking/core</h2>
-          </div>
+          <SectionHeading eyebrow="Core" title="@openbooking/core" />
           <div className="reference-groups">
             {coreApiGroups.map((group) => (
               <div className="reference-group" key={group.title}>
@@ -93,17 +84,11 @@ const confirmation = useBookingConfirmation({
               </div>
             ))}
           </div>
-          <article className="code-panel">
-            <h3>Core example</h3>
-            <pre>{coreExampleSnippet}</pre>
-          </article>
+          <CodePanel title="Core example">{coreExampleSnippet}</CodePanel>
         </div>
 
         <div className="docs-panel">
-          <div className="section-heading">
-            <p>React</p>
-            <h2>@openbooking/react</h2>
-          </div>
+          <SectionHeading eyebrow="React" title="@openbooking/react" />
           <div className="reference-groups">
             {reactApiGroups.map((group) => (
               <div className="reference-group" key={group.title}>
@@ -118,10 +103,7 @@ const confirmation = useBookingConfirmation({
               </div>
             ))}
           </div>
-          <article className="code-panel">
-            <h3>React example</h3>
-            <pre>{reactExampleSnippet}</pre>
-          </article>
+          <CodePanel title="React example">{reactExampleSnippet}</CodePanel>
         </div>
       </section>
     </section>

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { CodePanel } from "../components/CodePanel";
+import { SectionHeading } from "../components/SectionHeading";
 import { integrationGuides } from "../data";
 
 export function IntegrationGuidePage() {
@@ -11,10 +13,10 @@ export function IntegrationGuidePage() {
   return (
     <section className="integration-guide" aria-label="Integration guide">
       <div className="docs-panel">
-        <div className="section-heading">
-          <p>Integration guide</p>
-          <h2>Framework-specific server confirmation examples</h2>
-        </div>
+        <SectionHeading
+          eyebrow="Integration guide"
+          title="Framework-specific server confirmation examples"
+        />
         <p className="guide-intro">
           The client keeps using <code>useBookingConfirmation</code>. The server owns hold
           persistence, final validation, and optimistic concurrency through
@@ -50,10 +52,7 @@ export function IntegrationGuidePage() {
               <strong>{selectedGuide.description}</strong>
             </div>
           </div>
-          <article className="code-panel">
-            <h3>{selectedGuide.title}</h3>
-            <pre>{selectedGuide.snippet}</pre>
-          </article>
+          <CodePanel title={selectedGuide.title}>{selectedGuide.snippet}</CodePanel>
         </div>
       </div>
     </section>

@@ -9,6 +9,9 @@ import {
   useBooking,
   useBookingConfirmation
 } from "@openbooking/react";
+import { CodePanel } from "../components/CodePanel";
+import { ComparisonCard } from "../components/ComparisonCard";
+import { SectionHeading } from "../components/SectionHeading";
 import { availability, bookings, diagnosticDates, services } from "../data";
 import { formatReasonLabel } from "../formatters";
 
@@ -133,33 +136,21 @@ const confirmation = await confirmBookingWithRetry({
     <section className="content-grid">
       <section className="docs-stack">
         <div className="docs-panel">
-          <div className="section-heading">
-            <p>Packages</p>
-            <h2>Core and React, side by side</h2>
-          </div>
+          <SectionHeading eyebrow="Packages" title="Core and React, side by side" />
           <div className="comparison-grid">
-            <article className="comparison-card">
-              <h3>@openbooking/core</h3>
-              <p>
-                Pure TypeScript engine for services, weekly availability, blackout dates,
-                conflicts, buffers, and slot generation.
-              </p>
-            </article>
-            <article className="comparison-card">
-              <h3>@openbooking/react</h3>
-              <p>
-                Hooks and starter components that wrap the core engine without moving
-                scheduling rules into the UI layer.
-              </p>
-            </article>
+            <ComparisonCard title="@openbooking/core">
+              Pure TypeScript engine for services, weekly availability, blackout dates,
+              conflicts, buffers, and slot generation.
+            </ComparisonCard>
+            <ComparisonCard title="@openbooking/react">
+              Hooks and starter components that wrap the core engine without moving
+              scheduling rules into the UI layer.
+            </ComparisonCard>
           </div>
         </div>
 
         <div className="docs-panel">
-          <div className="section-heading">
-            <p>Diagnostics</p>
-            <h2>Preset dates that expose blocked states</h2>
-          </div>
+          <SectionHeading eyebrow="Diagnostics" title="Preset dates that expose blocked states" />
           <div className="scenario-row">
             <button
               className="scenario-chip"
@@ -226,49 +217,37 @@ const confirmation = await confirmBookingWithRetry({
             )}
           </div>
           <div className="code-grid">
-            <article className="code-panel">
-              <h3>Core usage</h3>
-              <pre>{liveCoreSnippet}</pre>
-            </article>
-            <article className="code-panel">
-              <h3>React usage</h3>
-              <pre>{liveReactSnippet}</pre>
-            </article>
+            <CodePanel title="Core usage">{liveCoreSnippet}</CodePanel>
+            <CodePanel title="React usage">{liveReactSnippet}</CodePanel>
           </div>
         </div>
 
         <div className="docs-panel">
-          <div className="section-heading">
-            <p>API flow</p>
-            <h2>React client, core-backed server confirm</h2>
-          </div>
+          <SectionHeading eyebrow="API flow" title="React client, core-backed server confirm" />
           <div className="comparison-grid">
-            <article className="comparison-card">
+            <div className="comparison-card">
               <h3>Client</h3>
               <p>
                 Use <code>useBookingConfirmation</code> to request holds and confirm
                 bookings against your own backend endpoints.
               </p>
               <pre>{reactApiSnippet}</pre>
-            </article>
-            <article className="comparison-card">
+            </div>
+            <div className="comparison-card">
               <h3>Server</h3>
               <p>
                 Use <code>confirmBookingWithRetry</code> on the server for final
                 validation, version-safe confirmation, and one bounded retry.
               </p>
               <pre>{serverFlowSnippet}</pre>
-            </article>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="demo-pane" aria-label="Booking demo">
         <div className="docs-panel">
-          <div className="section-heading">
-            <p>Demo flow</p>
-            <h2>Small studio booking</h2>
-          </div>
+          <SectionHeading eyebrow="Demo flow" title="Small studio booking" />
           <div className="booking-grid">
             <div className="booking-panel">
               <h3>1. Service</h3>
