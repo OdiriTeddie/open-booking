@@ -102,6 +102,12 @@ export interface BookingRepositorySnapshot {
   holds: readonly BookingHold[];
 }
 
+export type BookingRepositoryVersion = string | number;
+
+export interface VersionedBookingRepositorySnapshot extends BookingRepositorySnapshot {
+  version: BookingRepositoryVersion;
+}
+
 export interface BookingRepositoryReader {
   getSnapshot(): Promise<BookingRepositorySnapshot>;
 }
@@ -114,9 +120,40 @@ export interface BookingRepositoryWriter {
 
 export interface BookingRepository extends BookingRepositoryReader, BookingRepositoryWriter {}
 
+export interface VersionedBookingRepositoryReader {
+  getSnapshot(): Promise<VersionedBookingRepositorySnapshot>;
+}
+
+export interface CommitBookingChangeInput {
+  expectedVersion: BookingRepositoryVersion;
+  booking: Booking;
+  releaseHoldId?: string;
+}
+
+export interface CommitBookingChangeResult {
+  status: "committed" | "version-mismatch" | "duplicate-booking-id";
+}
+
+export interface VersionedBookingRepositoryWriter {
+  commitBookingChange(input: CommitBookingChangeInput): Promise<CommitBookingChangeResult>;
+}
+
+export interface VersionedBookingRepository
+  extends VersionedBookingRepositoryReader,
+    VersionedBookingRepositoryWriter {}
+
 export interface CreateBookingEngineFromRepositoryInput
   extends Omit<BookingEngineConfig, "bookings" | "holds"> {
   repository: BookingRepositoryReader;
+}
+
+export interface ConfirmBookingWithVersionInput
+  extends Omit<BookingEngineConfig, "bookings" | "holds"> {
+  repository: VersionedBookingRepository;
+  expectedVersion: BookingRepositoryVersion;
+  bookingId: string;
+  slot: BookingSlot;
+  holdId?: string;
 }
 
 export interface GetAvailableSlotsInput {
@@ -167,7 +204,8 @@ export type BookingFailureReason =
   | "slot-unavailable"
   | "duplicate-booking-id"
   | "hold-not-found"
-  | "hold-expired";
+  | "hold-expired"
+  | "version-mismatch";
 
 export interface ConfirmBookingResult {
   status: "confirmed" | "duplicate" | "unavailable";
@@ -733,6 +771,67 @@ export async function createBookingEngineFromRepository(
     slotIntervalMinutes: input.slotIntervalMinutes,
     timeZone: input.timeZone
   });
+}
+
+export async function confirmBookingWithVersion(
+  input: ConfirmBookingWithVersionInput
+): Promise<ConfirmBookingResult> {
+  const snapshot = await input.repository.getSnapshot();
+  const engine = createBookingEngine({
+    services: input.services,
+    availability: input.availability,
+    bookings: snapshot.bookings,
+    holds: snapshot.holds,
+    bufferMinutes: input.bufferMinutes,
+    blackoutDates: input.blackoutDates,
+    dateOverrides: input.dateOverrides,
+    recurringAvailability: input.recurringAvailability,
+    recurringBlackoutRules: input.recurringBlackoutRules,
+    bookingRules: input.bookingRules,
+    minimumNoticeMinutes: input.minimumNoticeMinutes,
+    maxAdvanceDays: input.maxAdvanceDays,
+    now: input.now,
+    slotIntervalMinutes: input.slotIntervalMinutes,
+    timeZone: input.timeZone
+  });
+
+  const confirmation = input.holdId
+    ? engine.confirmHeldBooking({
+        holdId: input.holdId,
+        bookingId: input.bookingId
+      })
+    : engine.confirmBooking({
+        id: input.bookingId,
+        slot: input.slot
+      });
+
+  if (confirmation.status !== "confirmed" || !confirmation.booking) {
+    return confirmation;
+  }
+
+  const commitResult = await input.repository.commitBookingChange({
+    expectedVersion: input.expectedVersion,
+    booking: confirmation.booking,
+    releaseHoldId: input.holdId
+  });
+
+  if (commitResult.status === "version-mismatch") {
+    return {
+      status: "unavailable",
+      engine,
+      reason: "version-mismatch"
+    };
+  }
+
+  if (commitResult.status === "duplicate-booking-id") {
+    return {
+      status: "unavailable",
+      engine,
+      reason: "duplicate-booking-id"
+    };
+  }
+
+  return confirmation;
 }
 
 function validateConfig(config: BookingEngineConfig): void {

@@ -94,6 +94,7 @@ const slots = engine.getAvailableSlots({
 - `engine.confirmBooking({ id, slot })`
 - `engine.addBooking(booking)`
 - `createBookingEngineFromRepository({ ...config, repository })`
+- `confirmBookingWithVersion({ ...config, repository, expectedVersion, bookingId, slot })`
 
 ## Time Zone Model
 
@@ -158,6 +159,18 @@ const slots = engine.getAvailableSlots({
   pure booking engine from persisted bookings and holds.
 - repository writes are intentionally not hidden inside the core engine. The
   engine computes decisions; your application coordinates storage.
+
+## Versioned Confirmation
+
+- `VersionedBookingRepositoryReader` returns a snapshot with a `version`.
+- `VersionedBookingRepositoryWriter` defines
+  `commitBookingChange({ expectedVersion, booking, releaseHoldId? })`.
+- `confirmBookingWithVersion(...)`:
+  - loads a versioned snapshot from storage
+  - validates the booking or held booking against that snapshot
+  - attempts an optimistic-concurrency commit with `expectedVersion`
+- if the stored version has changed, the result is
+  `status: "unavailable"` with `reason: "version-mismatch"`.
 
 ## Availability Diagnostics
 

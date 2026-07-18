@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createBookingEngine, createBookingEngineFromRepository } from "../src";
+import {
+  confirmBookingWithVersion,
+  createBookingEngine,
+  createBookingEngineFromRepository
+} from "../src";
 
 const baseConfig = {
   services: [
@@ -1338,5 +1342,79 @@ describe("createBookingEngine", () => {
         end: "2026-07-10T09:30:00.000Z"
       })
     ).toEqual({ available: true });
+  });
+
+  it("confirms a booking against a versioned repository snapshot", async () => {
+    const repository = {
+      async getSnapshot() {
+        return {
+          version: 7,
+          bookings: [],
+          holds: []
+        };
+      },
+      async commitBookingChange() {
+        return {
+          status: "committed" as const
+        };
+      }
+    };
+
+    const result = await confirmBookingWithVersion({
+      ...baseConfig,
+      repository,
+      expectedVersion: 7,
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      },
+      now: "2026-07-18T09:00:00.000Z"
+    });
+
+    expect(result.status).toBe("confirmed");
+    expect(result.booking).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-24T09:00:00.000Z",
+      end: "2026-07-24T09:30:00.000Z"
+    });
+  });
+
+  it("returns version-mismatch when repository commit version is stale", async () => {
+    const repository = {
+      async getSnapshot() {
+        return {
+          version: 7,
+          bookings: [],
+          holds: []
+        };
+      },
+      async commitBookingChange() {
+        return {
+          status: "version-mismatch" as const
+        };
+      }
+    };
+
+    const result = await confirmBookingWithVersion({
+      ...baseConfig,
+      repository,
+      expectedVersion: 6,
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      },
+      now: "2026-07-18T09:00:00.000Z"
+    });
+
+    expect(result).toEqual({
+      status: "unavailable",
+      engine: expect.any(Object),
+      reason: "version-mismatch"
+    });
   });
 });
