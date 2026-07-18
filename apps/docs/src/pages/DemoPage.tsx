@@ -1,137 +1,29 @@
-import { createBookingEngine } from "@openbooking/core";
-import { useMemo, useState } from "react";
 import {
   BookingCalendar,
   BookingForm,
   BookingSummary,
   ServiceSelector,
-  TimeSlots,
-  useBooking,
-  useBookingConfirmation
+  TimeSlots
 } from "@openbooking/react";
 import { CodePanel } from "../components/CodePanel";
 import { ComparisonCard } from "../components/ComparisonCard";
 import { InspectorCard } from "../components/InspectorCard";
 import { SectionHeading } from "../components/SectionHeading";
-import { availability, bookings, diagnosticDates, services } from "../data";
+import { diagnosticDates } from "../data";
 import { formatReasonLabel } from "../formatters";
+import { useDemoBookingModel } from "../hooks/useDemoBookingModel";
 
 export function DemoPage() {
-  const [message, setMessage] = useState("");
-  const booking = useBooking({
-    services,
-    availability,
-    bookings,
-    bufferMinutes: 15,
-    bookingRules: {
-      maxBookingsPerDay: 3
-    },
-    blackoutDates: ["2026-08-01"],
-    minimumNoticeMinutes: 120,
-    now: "2026-07-18T08:15:00.000Z",
-    slotIntervalMinutes: 30,
-    initialDate: diagnosticDates.mixed
-  });
-
-  const engine = useMemo(
-    () =>
-      createBookingEngine({
-        services,
-        availability,
-        bookings,
-        bufferMinutes: 15,
-        bookingRules: {
-          maxBookingsPerDay: 3
-        },
-        blackoutDates: ["2026-08-01"],
-        minimumNoticeMinutes: 120,
-        now: "2026-07-18T08:15:00.000Z",
-        slotIntervalMinutes: 30
-      }),
-    []
-  );
-
-  const confirmation = useBookingConfirmation({
-    async createHold(input) {
-      return {
-        status: "held" as const,
-        resource: {
-          id: input.id,
-          slot: input.slot,
-          expiresAt: input.expiresAt
-        },
-        engine
-      };
-    },
-    async confirmHeldBooking(input) {
-      return {
-        status: "confirmed" as const,
-        resource: {
-          id: input.bookingId,
-          serviceId: booking.selectedSlot?.serviceId ?? "consultation",
-          start: booking.selectedSlot?.start ?? "2026-07-18T10:00:00.000Z",
-          end: booking.selectedSlot?.end ?? "2026-07-18T10:30:00.000Z"
-        },
-        engine
-      };
-    }
-  });
-
-  const selectedService = useMemo(
-    () => services.find((service) => service.id === booking.selectedServiceId),
-    [booking.selectedServiceId]
-  );
-  const availabilityForDate = engine.getAvailabilityForDate(booking.selectedDate);
-  const unavailableSlots = booking.slotsWithAvailability.filter((slot) => !slot.available);
-  const blockedReasonCounts = unavailableSlots.reduce<Record<string, number>>((accumulator, slot) => {
-    const reason = slot.reason ?? "unknown";
-    accumulator[reason] = (accumulator[reason] ?? 0) + 1;
-    return accumulator;
-  }, {});
-  const liveCoreSnippet = `import { createBookingEngine } from "@openbooking/core";
-
-const engine = createBookingEngine({
-  services,
-  availability,
-  bookings,
-  bufferMinutes: 15,
-  bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["2026-08-01"],
-  minimumNoticeMinutes: 120,
-  now: "2026-07-18T08:15:00.000Z"
-});
-
-const slotAvailability = engine.getSlotsWithAvailability({
-  serviceId: "${booking.selectedServiceId}",
-  date: "${booking.selectedDate}"
-});`;
-  const liveReactSnippet = `const booking = useBooking({
-  services,
-  availability,
-  bookings,
-  bufferMinutes: 15,
-  bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["2026-08-01"],
-  minimumNoticeMinutes: 120,
-  now: "2026-07-18T08:15:00.000Z",
-  initialDate: "${booking.selectedDate}"
-});`;
-  const reactApiSnippet = `const confirmation = useBookingConfirmation({
-  createHold: (input) => api.createHold(input),
-  confirmHeldBooking: (input) => api.confirmHeldBooking(input)
-});`;
-  const serverFlowSnippet = `import { confirmBookingWithRetry } from "@openbooking/core";
-
-const confirmation = await confirmBookingWithRetry({
-  services,
-  availability,
-  repository,
-  bookingId: "booking-42",
-  holdId: "hold-42",
-  slot,
-  now: "2026-07-18T12:05:00.000Z",
-  maxVersionRetries: 1
-});`;
+  const {
+    booking,
+    selectedService,
+    availabilityForDate,
+    unavailableSlots,
+    blockedReasonCounts,
+    message,
+    snippets,
+    submitBooking
+  } = useDemoBookingModel();
 
   return (
     <section className="content-grid">
@@ -210,8 +102,8 @@ const confirmation = await confirmBookingWithRetry({
             )}
           </div>
           <div className="code-grid">
-            <CodePanel title="Core usage">{liveCoreSnippet}</CodePanel>
-            <CodePanel title="React usage">{liveReactSnippet}</CodePanel>
+            <CodePanel title="Core usage">{snippets.liveCore}</CodePanel>
+            <CodePanel title="React usage">{snippets.liveReact}</CodePanel>
           </div>
         </div>
 
@@ -224,7 +116,7 @@ const confirmation = await confirmBookingWithRetry({
                 Use <code>useBookingConfirmation</code> to request holds and confirm
                 bookings against your own backend endpoints.
               </p>
-              <pre>{reactApiSnippet}</pre>
+              <pre>{snippets.reactApi}</pre>
             </div>
             <div className="comparison-card">
               <h3>Server</h3>
@@ -232,7 +124,7 @@ const confirmation = await confirmBookingWithRetry({
                 Use <code>confirmBookingWithRetry</code> on the server for final
                 validation, version-safe confirmation, and one bounded retry.
               </p>
-              <pre>{serverFlowSnippet}</pre>
+              <pre>{snippets.serverFlow}</pre>
             </div>
           </div>
         </div>
@@ -277,46 +169,7 @@ const confirmation = await confirmBookingWithRetry({
               <h3>4. Details</h3>
               <BookingForm
                 disabled={!booking.selectedSlot}
-                onSubmit={async (values) => {
-                  if (!booking.selectedSlot) {
-                    return;
-                  }
-
-                  const holdResult = await confirmation.requestHold({
-                    id: "hold-demo",
-                    slot: booking.selectedSlot,
-                    expiresAt: "2026-07-18T12:10:00.000Z"
-                  });
-
-                  if (holdResult.status === "unavailable") {
-                    setMessage(`Hold failed: ${holdResult.reason}.`);
-                    return;
-                  }
-
-                  if (holdResult.status === "duplicate") {
-                    setMessage("Hold already exists for the selected slot.");
-                    return;
-                  }
-
-                  const confirmResult = await confirmation.confirmHeldSlot({
-                    holdId: holdResult.resource.id,
-                    bookingId: "booking-demo"
-                  });
-
-                  if (confirmResult.status === "confirmed") {
-                    setMessage(
-                      `Booking request received for ${values.name} at ${confirmResult.resource.start}.`
-                    );
-                    return;
-                  }
-
-                  if (confirmResult.status === "duplicate") {
-                    setMessage("Booking already exists for this hold.");
-                    return;
-                  }
-
-                  setMessage(`Confirmation failed: ${confirmResult.reason}.`);
-                }}
+                onSubmit={(values) => submitBooking(values.name)}
               />
               {message ? <p className="demo-message">{message}</p> : null}
             </div>
