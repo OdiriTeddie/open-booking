@@ -139,6 +139,10 @@ code {
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.2fr);
 }
 
+.integration-guide {
+  margin-top: 18px;
+}
+
 .docs-stack,
 .demo-pane {
   display: grid;
@@ -158,13 +162,16 @@ code {
 
 .comparison-grid,
 .inspector-grid,
-.booking-grid {
+.booking-grid,
+.guide-layout,
+.guide-copy {
   display: grid;
   gap: 14px;
 }
 
 .scenario-row,
-.reason-list {
+.reason-list,
+.guide-tabs {
   display: grid;
   gap: 10px;
 }
@@ -177,9 +184,19 @@ code {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.guide-layout {
+  align-items: start;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.3fr);
+}
+
+.guide-copy {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .comparison-card,
 .inspector-card,
-.booking-panel {
+.booking-panel,
+.guide-card {
   background: var(--panel-strong);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -201,6 +218,12 @@ code {
   margin: 0;
 }
 
+.guide-intro {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
 .inspector-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -212,7 +235,8 @@ code {
 }
 
 .scenario-chip,
-.reason-row {
+.reason-row,
+.guide-tab {
   background: var(--panel-strong);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -236,6 +260,44 @@ code {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.guide-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.guide-tab {
+  color: var(--ink);
+  cursor: pointer;
+  padding: 12px 14px;
+}
+
+.guide-tab[data-selected="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.guide-card {
+  display: grid;
+  gap: 0.45rem;
+  min-height: 104px;
+  padding: 14px;
+}
+
+.guide-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.guide-card strong {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.guide-card-wide {
+  grid-column: 1 / -1;
 }
 
 .reason-row {
@@ -311,7 +373,10 @@ code {
   .content-grid,
   .comparison-grid,
   .inspector-grid,
-  .scenario-row {
+  .scenario-row,
+  .guide-layout,
+  .guide-copy,
+  .guide-tabs {
     grid-template-columns: 1fr;
   }
 }

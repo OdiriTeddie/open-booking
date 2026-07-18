@@ -60,8 +60,114 @@ const bookings = [
   }
 ];
 
+const integrationGuides = [
+  {
+    id: "nextjs",
+    label: "Next.js",
+    title: "Next.js route handler",
+    description:
+      "Use a route handler or server action to confirm the held slot against the latest repository snapshot.",
+    snippet: `import { NextResponse } from "next/server";
+import { confirmBookingWithRetry } from "@openbooking/core";
+
+export async function POST(request: Request) {
+  const input = await request.json();
+
+  const confirmation = await confirmBookingWithRetry({
+    services,
+    availability,
+    repository,
+    bookingId: input.bookingId,
+    holdId: input.holdId,
+    slot: input.slot,
+    now: "2026-07-18T12:05:00.000Z",
+    maxVersionRetries: 1
+  });
+
+  if (confirmation.status === "confirmed") {
+    return NextResponse.json(confirmation.resource, { status: 201 });
+  }
+
+  return NextResponse.json(confirmation, { status: 409 });
+}`
+  },
+  {
+    id: "express",
+    label: "Express",
+    title: "Express POST handler",
+    description:
+      "Keep hold creation and final confirmation in API handlers while React calls them through useBookingConfirmation.",
+    snippet: `import express from "express";
+import { confirmBookingWithRetry } from "@openbooking/core";
+
+const app = express();
+
+app.post("/api/booking/confirm", async (req, res) => {
+  const confirmation = await confirmBookingWithRetry({
+    services,
+    availability,
+    repository,
+    bookingId: req.body.bookingId,
+    holdId: req.body.holdId,
+    slot: req.body.slot,
+    now: "2026-07-18T12:05:00.000Z",
+    maxVersionRetries: 1
+  });
+
+  if (confirmation.status === "confirmed") {
+    return res.status(201).json(confirmation.resource);
+  }
+
+  return res.status(409).json(confirmation);
+});`
+  },
+  {
+    id: "fastify",
+    label: "Fastify",
+    title: "Fastify route",
+    description:
+      "Use the same core helper inside a typed Fastify route to keep concurrency handling consistent across adapters.",
+    snippet: `import Fastify from "fastify";
+import { confirmBookingWithRetry } from "@openbooking/core";
+
+const app = Fastify();
+
+app.post("/api/booking/confirm", async (request, reply) => {
+  const input = request.body as {
+    bookingId: string;
+    holdId?: string;
+    slot: {
+      serviceId: string;
+      start: string;
+      end: string;
+    };
+  };
+
+  const confirmation = await confirmBookingWithRetry({
+    services,
+    availability,
+    repository,
+    bookingId: input.bookingId,
+    holdId: input.holdId,
+    slot: input.slot,
+    now: "2026-07-18T12:05:00.000Z",
+    maxVersionRetries: 1
+  });
+
+  if (confirmation.status === "confirmed") {
+    return reply.code(201).send(confirmation.resource);
+  }
+
+  return reply.code(409).send(confirmation);
+});`
+  }
+] as const;
+
 function App() {
   const [message, setMessage] = useState("");
+  const [selectedGuideId, setSelectedGuideId] = useState<(typeof integrationGuides)[number]["id"]>(
+    "nextjs"
+  );
   const booking = useBooking({
     services,
     availability,
@@ -130,6 +236,8 @@ function App() {
     accumulator[reason] = (accumulator[reason] ?? 0) + 1;
     return accumulator;
   }, {});
+  const selectedGuide =
+    integrationGuides.find((guide) => guide.id === selectedGuideId) ?? integrationGuides[0];
   const liveCoreSnippet = `import { createBookingEngine } from "@openbooking/core";
 
 const engine = createBookingEngine({
@@ -437,6 +545,55 @@ const confirmation = await confirmBookingWithRetry({
             </div>
           </div>
         </section>
+      </section>
+
+      <section className="integration-guide" aria-label="Integration guide">
+        <div className="docs-panel">
+          <div className="section-heading">
+            <p>Integration guide</p>
+            <h2>Framework-specific server confirmation examples</h2>
+          </div>
+          <p className="guide-intro">
+            The client keeps using <code>useBookingConfirmation</code>. The server owns
+            hold persistence, final validation, and optimistic concurrency through
+            <code>confirmBookingWithRetry</code>.
+          </p>
+          <div className="guide-tabs" role="tablist" aria-label="Framework examples">
+            {integrationGuides.map((guide) => (
+              <button
+                aria-selected={guide.id === selectedGuide.id}
+                className="guide-tab"
+                data-selected={guide.id === selectedGuide.id}
+                key={guide.id}
+                onClick={() => setSelectedGuideId(guide.id)}
+                role="tab"
+                type="button"
+              >
+                {guide.label}
+              </button>
+            ))}
+          </div>
+          <div className="guide-layout">
+            <div className="guide-copy">
+              <div className="guide-card">
+                <span>Framework</span>
+                <strong>{selectedGuide.title}</strong>
+              </div>
+              <div className="guide-card">
+                <span>Pattern</span>
+                <strong>Hold on client, confirm on server</strong>
+              </div>
+              <div className="guide-card guide-card-wide">
+                <span>Notes</span>
+                <strong>{selectedGuide.description}</strong>
+              </div>
+            </div>
+            <article className="code-panel">
+              <h3>{selectedGuide.title}</h3>
+              <pre>{selectedGuide.snippet}</pre>
+            </article>
+          </div>
+        </div>
       </section>
     </main>
   );
