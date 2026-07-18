@@ -207,19 +207,39 @@ export type BookingFailureReason =
   | "hold-expired"
   | "version-mismatch";
 
-export interface ConfirmBookingResult {
-  status: "confirmed" | "duplicate" | "unavailable";
-  booking?: Booking;
+export interface BookingDecisionConfirmed<TResource> {
+  status: "confirmed";
+  resource: TResource;
   engine: BookingEngine;
-  reason?: BookingFailureReason;
 }
 
-export interface BookingHoldResult {
-  status: "held" | "duplicate" | "unavailable";
-  hold?: BookingHold;
+export interface BookingDecisionHeld<TResource> {
+  status: "held";
+  resource: TResource;
   engine: BookingEngine;
-  reason?: BookingFailureReason;
 }
+
+export interface BookingDecisionDuplicate<TResource> {
+  status: "duplicate";
+  resource: TResource;
+  engine: BookingEngine;
+}
+
+export interface BookingDecisionUnavailable {
+  status: "unavailable";
+  reason: BookingFailureReason;
+  engine: BookingEngine;
+}
+
+export type BookingConfirmationResult =
+  | BookingDecisionConfirmed<Booking>
+  | BookingDecisionDuplicate<Booking>
+  | BookingDecisionUnavailable;
+
+export type BookingHoldResult =
+  | BookingDecisionHeld<BookingHold>
+  | BookingDecisionDuplicate<BookingHold>
+  | BookingDecisionUnavailable;
 
 export interface BookingEngine {
   getServices(): readonly Service[];
@@ -233,8 +253,8 @@ export interface BookingEngine {
   getService(serviceId: string): Service | undefined;
   createBooking(input: CreateBookingInput): Booking;
   createHold(input: CreateBookingHoldInput): BookingHoldResult;
-  confirmBooking(input: ConfirmBookingInput): ConfirmBookingResult;
-  confirmHeldBooking(input: ConfirmHeldBookingInput): ConfirmBookingResult;
+  confirmBooking(input: ConfirmBookingInput): BookingConfirmationResult;
+  confirmHeldBooking(input: ConfirmHeldBookingInput): BookingConfirmationResult;
   addBooking(booking: Booking): BookingEngine;
   addHold(hold: BookingHold): BookingEngine;
 }
@@ -469,7 +489,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       if (isSameHold(existingHold, input)) {
         return {
           status: "duplicate",
-          hold: existingHold,
+          resource: existingHold,
           engine: createBookingEngine({ ...config, holds })
         };
       }
@@ -500,19 +520,19 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
     return {
       status: "held",
-      hold,
+      resource: hold,
       engine: nextEngine
     };
   }
 
-  function confirmBooking(input: ConfirmBookingInput): ConfirmBookingResult {
+  function confirmBooking(input: ConfirmBookingInput): BookingConfirmationResult {
     const existingBooking = findBookingById(input.id);
 
     if (existingBooking) {
       if (isSameBooking(existingBooking, input)) {
         return {
           status: "duplicate",
-          booking: existingBooking,
+          resource: existingBooking,
           engine: createBookingEngine(config)
         };
       }
@@ -542,12 +562,12 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
     return {
       status: "confirmed",
-      booking,
+      resource: booking,
       engine: nextEngine
     };
   }
 
-  function confirmHeldBooking(input: ConfirmHeldBookingInput): ConfirmBookingResult {
+  function confirmHeldBooking(input: ConfirmHeldBookingInput): BookingConfirmationResult {
     const hold = findHoldById(input.holdId);
 
     if (!hold) {
@@ -597,7 +617,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
     return {
       status: "confirmed",
-      booking,
+      resource: booking,
       engine: nextEngine
     };
   }
@@ -775,7 +795,7 @@ export async function createBookingEngineFromRepository(
 
 export async function confirmBookingWithVersion(
   input: ConfirmBookingWithVersionInput
-): Promise<ConfirmBookingResult> {
+): Promise<BookingConfirmationResult> {
   const snapshot = await input.repository.getSnapshot();
   const engine = createBookingEngine({
     services: input.services,
@@ -805,13 +825,13 @@ export async function confirmBookingWithVersion(
         slot: input.slot
       });
 
-  if (confirmation.status !== "confirmed" || !confirmation.booking) {
+  if (confirmation.status !== "confirmed") {
     return confirmation;
   }
 
   const commitResult = await input.repository.commitBookingChange({
     expectedVersion: input.expectedVersion,
-    booking: confirmation.booking,
+    booking: confirmation.resource,
     releaseHoldId: input.holdId
   });
 

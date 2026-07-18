@@ -142,6 +142,8 @@ const slots = engine.getAvailableSlots({
 - `createBooking({ id, slot })` validates the slot and returns a booking shape.
 - `confirmBooking({ id, slot })` performs final slot validation at booking time
   and returns an explicit result object.
+- successful and duplicate booking decisions return the booking in
+  `result.resource`.
 - repeated `confirmBooking` calls with the same `id` and same slot return
   `status: "duplicate"` with the original booking.
 - repeated `confirmBooking` calls with the same `id` and a different slot return
@@ -244,7 +246,7 @@ const confirmation = await confirmBookingWithVersion({
 });
 
 if (confirmation.status === "confirmed") {
-  return confirmation.booking;
+  return confirmation.resource;
 }
 
 if (confirmation.reason === "version-mismatch") {

@@ -515,7 +515,10 @@ describe("createBookingEngine", () => {
     const result = engine.confirmBooking({ id: "booking-1", slot });
 
     expect(result.status).toBe("confirmed");
-    expect(result.booking).toEqual({
+    if (result.status !== "confirmed") {
+      throw new Error("Expected confirmed booking result.");
+    }
+    expect(result.resource).toEqual({
       id: "booking-1",
       serviceId: "consultation",
       start: "2026-07-10T09:00:00.000Z",
@@ -541,7 +544,10 @@ describe("createBookingEngine", () => {
     });
 
     expect(result.status).toBe("held");
-    expect(result.hold).toEqual({
+    if (result.status !== "held") {
+      throw new Error("Expected held booking result.");
+    }
+    expect(result.resource).toEqual({
       id: "hold-1",
       slot,
       expiresAt: "2026-07-10T08:30:00.000Z"
@@ -575,7 +581,10 @@ describe("createBookingEngine", () => {
     });
 
     expect(result.status).toBe("duplicate");
-    expect(result.hold).toEqual({
+    if (result.status !== "duplicate") {
+      throw new Error("Expected duplicate hold result.");
+    }
+    expect(result.resource).toEqual({
       id: "hold-1",
       slot,
       expiresAt: "2026-07-10T08:30:00.000Z"
@@ -600,7 +609,10 @@ describe("createBookingEngine", () => {
     });
 
     expect(result.status).toBe("confirmed");
-    expect(result.booking).toEqual({
+    if (result.status !== "confirmed") {
+      throw new Error("Expected confirmed held booking result.");
+    }
+    expect(result.resource).toEqual({
       id: "booking-1",
       serviceId: "consultation",
       start: "2026-07-10T09:00:00.000Z",
@@ -674,7 +686,10 @@ describe("createBookingEngine", () => {
     });
 
     expect(result.status).toBe("duplicate");
-    expect(result.booking).toEqual({
+    if (result.status !== "duplicate") {
+      throw new Error("Expected duplicate booking result.");
+    }
+    expect(result.resource).toEqual({
       id: "booking-1",
       serviceId: "consultation",
       start: "2026-07-10T09:00:00.000Z",
@@ -1374,7 +1389,10 @@ describe("createBookingEngine", () => {
     });
 
     expect(result.status).toBe("confirmed");
-    expect(result.booking).toEqual({
+    if (result.status !== "confirmed") {
+      throw new Error("Expected confirmed versioned booking result.");
+    }
+    expect(result.resource).toEqual({
       id: "booking-1",
       serviceId: "consultation",
       start: "2026-07-24T09:00:00.000Z",
