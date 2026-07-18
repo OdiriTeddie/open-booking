@@ -1,7 +1,7 @@
 import { createBookingEngine } from "@openbooking/core";
 import { useMemo, useState } from "react";
 import { useBooking, useBookingConfirmation } from "@openbooking/react";
-import { availability, bookings, diagnosticDates, services } from "../data";
+import { availability, bookings, demoDateConfig, services } from "../data";
 
 export function useDemoBookingModel() {
   const [message, setMessage] = useState("");
@@ -13,11 +13,11 @@ export function useDemoBookingModel() {
     bookingRules: {
       maxBookingsPerDay: 3
     },
-    blackoutDates: ["2026-08-01"],
+    blackoutDates: [demoDateConfig.diagnostics.blackout],
     minimumNoticeMinutes: 120,
-    now: "2026-07-18T08:15:00.000Z",
+    now: demoDateConfig.clock.browseNow,
     slotIntervalMinutes: 30,
-    initialDate: diagnosticDates.mixed
+    initialDate: demoDateConfig.diagnostics.mixed
   });
 
   const engine = useMemo(
@@ -30,9 +30,9 @@ export function useDemoBookingModel() {
         bookingRules: {
           maxBookingsPerDay: 3
         },
-        blackoutDates: ["2026-08-01"],
+        blackoutDates: [demoDateConfig.diagnostics.blackout],
         minimumNoticeMinutes: 120,
-        now: "2026-07-18T08:15:00.000Z",
+        now: demoDateConfig.clock.browseNow,
         slotIntervalMinutes: 30
       }),
     []
@@ -56,8 +56,8 @@ export function useDemoBookingModel() {
         resource: {
           id: input.bookingId,
           serviceId: booking.selectedSlot?.serviceId ?? "consultation",
-          start: booking.selectedSlot?.start ?? "2026-07-18T10:00:00.000Z",
-          end: booking.selectedSlot?.end ?? "2026-07-18T10:30:00.000Z"
+          start: booking.selectedSlot?.start ?? demoDateConfig.fallbackSlot.start,
+          end: booking.selectedSlot?.end ?? demoDateConfig.fallbackSlot.end
         },
         engine
       };
@@ -85,9 +85,9 @@ const engine = createBookingEngine({
   bookings,
   bufferMinutes: 15,
   bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["2026-08-01"],
+  blackoutDates: ["${demoDateConfig.diagnostics.blackout}"],
   minimumNoticeMinutes: 120,
-  now: "2026-07-18T08:15:00.000Z"
+  now: "${demoDateConfig.clock.browseNow}"
 });
 
 const slotAvailability = engine.getSlotsWithAvailability({
@@ -100,9 +100,9 @@ const slotAvailability = engine.getSlotsWithAvailability({
   bookings,
   bufferMinutes: 15,
   bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["2026-08-01"],
+  blackoutDates: ["${demoDateConfig.diagnostics.blackout}"],
   minimumNoticeMinutes: 120,
-  now: "2026-07-18T08:15:00.000Z",
+  now: "${demoDateConfig.clock.browseNow}",
   initialDate: "${booking.selectedDate}"
 });`,
     reactApi: `const confirmation = useBookingConfirmation({
@@ -118,7 +118,7 @@ const confirmation = await confirmBookingWithRetry({
   bookingId: "booking-42",
   holdId: "hold-42",
   slot,
-  now: "2026-07-18T12:05:00.000Z",
+  now: "${demoDateConfig.clock.confirmNow}",
   maxVersionRetries: 1
 });`
   };
@@ -131,7 +131,7 @@ const confirmation = await confirmBookingWithRetry({
     const holdResult = await confirmation.requestHold({
       id: "hold-demo",
       slot: booking.selectedSlot,
-      expiresAt: "2026-07-18T12:10:00.000Z"
+      expiresAt: demoDateConfig.clock.holdExpiresAt
     });
 
     if (holdResult.status === "unavailable") {

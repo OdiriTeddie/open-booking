@@ -1,7 +1,18 @@
-export const diagnosticDates = {
-  mixed: "2026-07-18",
-  capacity: "2026-07-25",
-  blackout: "2026-08-01"
+export const demoDateConfig = {
+  diagnostics: {
+    mixed: "2026-07-24",
+    capacity: "2026-07-25",
+    blackout: "2026-08-01"
+  },
+  clock: {
+    browseNow: "2026-07-24T08:15:00.000Z",
+    confirmNow: "2026-07-24T12:05:00.000Z",
+    holdExpiresAt: "2026-07-24T12:10:00.000Z"
+  },
+  fallbackSlot: {
+    start: "2026-07-24T10:00:00.000Z",
+    end: "2026-07-24T10:30:00.000Z"
+  }
 } as const;
 
 export const services = [
@@ -22,8 +33,8 @@ export const bookings = [
   {
     id: "booking-1",
     serviceId: "portrait-session",
-    start: "2026-07-18T10:00:00.000Z",
-    end: "2026-07-18T11:00:00.000Z"
+    start: "2026-07-24T10:00:00.000Z",
+    end: "2026-07-24T11:00:00.000Z"
   },
   {
     id: "booking-2",
@@ -65,7 +76,7 @@ export async function POST(request: Request) {
     bookingId: input.bookingId,
     holdId: input.holdId,
     slot: input.slot,
-    now: "2026-07-18T12:05:00.000Z",
+    now: "2026-07-24T12:05:00.000Z",
     maxVersionRetries: 1
   });
 
@@ -95,7 +106,7 @@ app.post("/api/booking/confirm", async (req, res) => {
     bookingId: req.body.bookingId,
     holdId: req.body.holdId,
     slot: req.body.slot,
-    now: "2026-07-18T12:05:00.000Z",
+    now: "2026-07-24T12:05:00.000Z",
     maxVersionRetries: 1
   });
 
@@ -135,7 +146,7 @@ app.post("/api/booking/confirm", async (request, reply) => {
     bookingId: input.bookingId,
     holdId: input.holdId,
     slot: input.slot,
-    now: "2026-07-18T12:05:00.000Z",
+    now: "2026-07-24T12:05:00.000Z",
     maxVersionRetries: 1
   });
 

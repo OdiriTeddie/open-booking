@@ -9,7 +9,7 @@ import { CodePanel } from "../components/CodePanel";
 import { ComparisonCard } from "../components/ComparisonCard";
 import { InspectorCard } from "../components/InspectorCard";
 import { SectionHeading } from "../components/SectionHeading";
-import { diagnosticDates } from "../data";
+import { demoDateConfig } from "../data";
 import { formatReasonLabel } from "../formatters";
 import { useDemoBookingModel } from "../hooks/useDemoBookingModel";
 
@@ -47,17 +47,17 @@ export function DemoPage() {
           <div className="scenario-row">
             <button
               className="scenario-chip"
-              data-selected={booking.selectedDate === diagnosticDates.mixed}
-              onClick={() => booking.selectDate(diagnosticDates.mixed)}
+              data-selected={booking.selectedDate === demoDateConfig.diagnostics.mixed}
+              onClick={() => booking.selectDate(demoDateConfig.diagnostics.mixed)}
               type="button"
             >
-              July 18
+              July 24
               <small>Notice + conflicts</small>
             </button>
             <button
               className="scenario-chip"
-              data-selected={booking.selectedDate === diagnosticDates.capacity}
-              onClick={() => booking.selectDate(diagnosticDates.capacity)}
+              data-selected={booking.selectedDate === demoDateConfig.diagnostics.capacity}
+              onClick={() => booking.selectDate(demoDateConfig.diagnostics.capacity)}
               type="button"
             >
               July 25
@@ -65,8 +65,8 @@ export function DemoPage() {
             </button>
             <button
               className="scenario-chip"
-              data-selected={booking.selectedDate === diagnosticDates.blackout}
-              onClick={() => booking.selectDate(diagnosticDates.blackout)}
+              data-selected={booking.selectedDate === demoDateConfig.diagnostics.blackout}
+              onClick={() => booking.selectDate(demoDateConfig.diagnostics.blackout)}
               type="button"
             >
               Aug 1

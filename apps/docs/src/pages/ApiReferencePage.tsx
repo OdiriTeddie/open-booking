@@ -1,3 +1,4 @@
+import { demoDateConfig } from "../data";
 import { CodePanel } from "../components/CodePanel";
 import { ComparisonCard } from "../components/ComparisonCard";
 import { ReferenceGroup } from "../components/ReferenceGroup";
@@ -15,14 +16,14 @@ const engine = createBookingEngine({
   availability,
   bookings,
   bufferMinutes: 15,
-  blackoutDates: ["2026-08-01"],
+  blackoutDates: ["${demoDateConfig.diagnostics.blackout}"],
   minimumNoticeMinutes: 120,
-  now: "2026-07-18T08:15:00.000Z"
+  now: "${demoDateConfig.clock.browseNow}"
 });
 
 const slots = engine.getSlotsWithAvailability({
   serviceId: "consultation",
-  date: "2026-07-25"
+  date: "${demoDateConfig.diagnostics.capacity}"
 });
 
 const confirmation = await confirmBookingWithRetry({
@@ -32,7 +33,7 @@ const confirmation = await confirmBookingWithRetry({
   bookingId: "booking-42",
   holdId: "hold-42",
   slot: slots[0],
-  now: "2026-07-18T12:05:00.000Z"
+  now: "${demoDateConfig.clock.confirmNow}"
 });`;
 
   const reactExampleSnippet = `import {
@@ -44,7 +45,7 @@ const booking = useBooking({
   services,
   availability,
   bookings,
-  initialDate: "2026-07-25"
+  initialDate: "${demoDateConfig.diagnostics.capacity}"
 });
 
 const confirmation = useBookingConfirmation({
