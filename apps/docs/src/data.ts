@@ -2,7 +2,7 @@ import {
   buildExpressConfirmSnippet,
   buildFastifyConfirmSnippet,
   buildNextJsConfirmSnippet
-} from "./snippets";
+} from "./snippets/integration";
 
 export const demoDateConfig = {
   diagnostics: {

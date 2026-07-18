@@ -7,7 +7,7 @@ import { coreApiGroups, reactApiGroups } from "../data";
 import {
   buildApiReferenceCoreSnippet,
   buildApiReferenceReactSnippet
-} from "../snippets";
+} from "../snippets/api-reference";
 
 export function ApiReferencePage() {
   const coreExampleSnippet = buildApiReferenceCoreSnippet({

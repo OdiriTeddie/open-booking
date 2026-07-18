@@ -7,7 +7,7 @@ import {
   buildReactBookingSnippet,
   buildReactConfirmationSnippet,
   buildServerFlowSnippet
-} from "../snippets";
+} from "../snippets/demo";
 
 export function useDemoBookingModel() {
   const [message, setMessage] = useState("");
