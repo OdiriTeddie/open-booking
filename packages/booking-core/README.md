@@ -295,6 +295,129 @@ Recommended server sequence:
 4. On `version-mismatch`, reload and retry with fresh availability data.
 5. On success, persist the booking and release the hold in the same repository commit.
 
+## Backend Integration Examples
+
+### Load Availability From Storage
+
+```ts
+import {
+  createBookingEngineFromRepository,
+  createInMemoryRepository
+} from "@openbooking/core";
+
+const repository = createInMemoryRepository({
+  bookings: [],
+  holds: [],
+  initialVersion: 0
+});
+
+const engine = await createBookingEngineFromRepository({
+  services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+  availability: {
+    monday: [{ start: "09:00", end: "17:00" }]
+  },
+  repository,
+  now: "2026-07-18T12:00:00.000Z",
+  timeZone: "Europe/London"
+});
+
+const slots = engine.getAvailableSlots({
+  serviceId: "consultation",
+  date: "2026-07-20"
+});
+```
+
+### Create A Hold In A Server Handler
+
+```ts
+import {
+  createBookingEngineFromRepository,
+  createInMemoryRepository
+} from "@openbooking/core";
+
+const repository = createInMemoryRepository();
+
+const engine = await createBookingEngineFromRepository({
+  services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+  availability: {
+    monday: [{ start: "09:00", end: "17:00" }]
+  },
+  repository,
+  now: "2026-07-18T12:00:00.000Z"
+});
+
+const holdResult = engine.createHold({
+  id: "hold-42",
+  slot: {
+    serviceId: "consultation",
+    start: "2026-07-20T09:00:00.000Z",
+    end: "2026-07-20T09:30:00.000Z"
+  },
+  expiresAt: "2026-07-18T12:10:00.000Z"
+});
+
+if (holdResult.status === "held") {
+  await repository.saveHold(holdResult.resource);
+}
+```
+
+### Confirm A Held Booking With Optimistic Concurrency
+
+```ts
+import { confirmBookingWithVersion } from "@openbooking/core";
+
+const snapshot = await repository.getSnapshot();
+
+const confirmation = await confirmBookingWithVersion({
+  services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+  availability: {
+    monday: [{ start: "09:00", end: "17:00" }]
+  },
+  repository,
+  expectedVersion: snapshot.version,
+  holdId: "hold-42",
+  bookingId: "booking-42",
+  slot: {
+    serviceId: "consultation",
+    start: "2026-07-20T09:00:00.000Z",
+    end: "2026-07-20T09:30:00.000Z"
+  },
+  now: "2026-07-18T12:05:00.000Z"
+});
+
+if (confirmation.status === "confirmed") {
+  return confirmation.resource;
+}
+```
+
+### Retry On Version Mismatch
+
+```ts
+const firstAttempt = await confirmBookingWithVersion({
+  services,
+  availability,
+  repository,
+  expectedVersion: staleVersion,
+  bookingId: "booking-42",
+  slot,
+  now: "2026-07-18T12:05:00.000Z"
+});
+
+if (firstAttempt.status === "unavailable" && firstAttempt.reason === "version-mismatch") {
+  const freshSnapshot = await repository.getSnapshot();
+
+  return confirmBookingWithVersion({
+    services,
+    availability,
+    repository,
+    expectedVersion: freshSnapshot.version,
+    bookingId: "booking-42",
+    slot,
+    now: "2026-07-18T12:05:00.000Z"
+  });
+}
+```
+
 ## Availability Diagnostics
 
 - `getSlotAvailability(slot)` returns `{ available, reason? }`.
