@@ -51,6 +51,12 @@ export interface Booking {
   end: IsoDateTime;
 }
 
+export interface BookingHold {
+  id: string;
+  slot: BookingSlot;
+  expiresAt: IsoDateTime;
+}
+
 export interface BookingSlot {
   serviceId: string;
   start: IsoDateTime;
@@ -77,6 +83,7 @@ export interface BookingEngineConfig {
   services: readonly Service[];
   availability: WeeklyAvailability;
   bookings?: readonly Booking[];
+  holds?: readonly BookingHold[];
   bufferMinutes?: number;
   blackoutDates?: readonly LocalDate[];
   dateOverrides?: readonly DateAvailabilityOverride[];
@@ -102,6 +109,17 @@ export interface CreateBookingInput {
 
 export type ConfirmBookingInput = CreateBookingInput;
 
+export interface CreateBookingHoldInput {
+  id: string;
+  slot: BookingSlot;
+  expiresAt: IsoDateTime;
+}
+
+export interface ConfirmHeldBookingInput {
+  holdId: string;
+  bookingId: string;
+}
+
 export type BookingUnavailabilityReason =
   | "unknown-service"
   | "invalid-slot-duration"
@@ -125,7 +143,9 @@ export interface DiagnosedBookingSlot extends BookingSlot {
 
 export type BookingFailureReason =
   | "slot-unavailable"
-  | "duplicate-booking-id";
+  | "duplicate-booking-id"
+  | "hold-not-found"
+  | "hold-expired";
 
 export interface ConfirmBookingResult {
   status: "confirmed" | "duplicate" | "unavailable";
@@ -134,18 +154,29 @@ export interface ConfirmBookingResult {
   reason?: BookingFailureReason;
 }
 
+export interface BookingHoldResult {
+  status: "held" | "duplicate" | "unavailable";
+  hold?: BookingHold;
+  engine: BookingEngine;
+  reason?: BookingFailureReason;
+}
+
 export interface BookingEngine {
   getServices(): readonly Service[];
   getAvailableSlots(input: GetAvailableSlotsInput): BookingSlot[];
   getSlotsWithAvailability(input: GetAvailableSlotsInput): DiagnosedBookingSlot[];
+  getHolds(): readonly BookingHold[];
   hasConflict(slot: BookingSlot): boolean;
   isSlotAvailable(slot: BookingSlot): boolean;
   getSlotAvailability(slot: BookingSlot): SlotAvailabilityResult;
   getAvailabilityForDate(date: LocalDate): DateAvailability;
   getService(serviceId: string): Service | undefined;
   createBooking(input: CreateBookingInput): Booking;
+  createHold(input: CreateBookingHoldInput): BookingHoldResult;
   confirmBooking(input: ConfirmBookingInput): ConfirmBookingResult;
+  confirmHeldBooking(input: ConfirmHeldBookingInput): ConfirmBookingResult;
   addBooking(booking: Booking): BookingEngine;
+  addHold(hold: BookingHold): BookingEngine;
 }
 
 const weekdays: Weekday[] = [
@@ -164,6 +195,9 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   const services = new Map(config.services.map((service) => [service.id, service]));
   const serviceList = [...config.services];
   const bookings = config.bookings ?? [];
+  const nowEpochMs = config.now ? parseIsoDateTime(config.now) : Date.now();
+  const holds = config.holds ?? [];
+  const activeHolds = holds.filter((hold) => parseIsoDateTime(hold.expiresAt) > nowEpochMs);
   const bufferMinutes = config.bufferMinutes ?? 0;
   const minimumNoticeMinutes = config.minimumNoticeMinutes ?? 0;
   const maxAdvanceDays = config.maxAdvanceDays;
@@ -178,11 +212,6 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   const timeZone = config.timeZone ?? "UTC";
   const hasBookingConstraints =
     config.minimumNoticeMinutes !== undefined || config.maxAdvanceDays !== undefined;
-  const nowEpochMs = hasBookingConstraints
-    ? config.now
-      ? parseIsoDateTime(config.now)
-      : Date.now()
-    : null;
 
   function getServices(): readonly Service[] {
     return serviceList;
@@ -190,6 +219,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
 
   function getService(serviceId: string): Service | undefined {
     return services.get(serviceId);
+  }
+
+  function getHolds(): readonly BookingHold[] {
+    return activeHolds;
   }
 
   function hasConflict(slot: BookingSlot): boolean {
@@ -203,6 +236,24 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       const bookingEnd = addMinutes(parseIsoDateTime(booking.end), bufferMinutes);
 
       return slotStart < bookingEnd && slotEnd > bookingStart;
+    });
+  }
+
+  function hasHoldConflict(slot: BookingSlot, ignoredHoldId?: string): boolean {
+    validateSlot(slot);
+
+    const slotStart = parseIsoDateTime(slot.start);
+    const slotEnd = parseIsoDateTime(slot.end);
+
+    return activeHolds.some((hold) => {
+      if (ignoredHoldId && hold.id === ignoredHoldId) {
+        return false;
+      }
+
+      const holdStart = addMinutes(parseIsoDateTime(hold.slot.start), -bufferMinutes);
+      const holdEnd = addMinutes(parseIsoDateTime(hold.slot.end), bufferMinutes);
+
+      return slotStart < holdEnd && slotEnd > holdStart;
     });
   }
 
@@ -296,6 +347,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
       return { available: false, reason: "conflict" };
     }
 
+    if (hasHoldConflict(slot)) {
+      return { available: false, reason: "conflict" };
+    }
+
     const bookingConstraintReason = getBookingConstraintFailureReason(slot);
 
     if (bookingConstraintReason) {
@@ -347,6 +402,49 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     };
   }
 
+  function createHold(input: CreateBookingHoldInput): BookingHoldResult {
+    const existingHold = findHoldById(input.id);
+
+    if (existingHold) {
+      if (isSameHold(existingHold, input)) {
+        return {
+          status: "duplicate",
+          hold: existingHold,
+          engine: createBookingEngine({ ...config, holds })
+        };
+      }
+
+      return {
+        status: "unavailable",
+        engine: createBookingEngine({ ...config, holds }),
+        reason: "duplicate-booking-id"
+      };
+    }
+
+    validateHoldExpiry(input.expiresAt, nowEpochMs);
+
+    if (!getSlotAvailability(input.slot).available) {
+      return {
+        status: "unavailable",
+        engine: createBookingEngine({ ...config, holds }),
+        reason: "slot-unavailable"
+      };
+    }
+
+    const hold: BookingHold = {
+      id: input.id,
+      slot: input.slot,
+      expiresAt: input.expiresAt
+    };
+    const nextEngine = addHold(hold);
+
+    return {
+      status: "held",
+      hold,
+      engine: nextEngine
+    };
+  }
+
   function confirmBooking(input: ConfirmBookingInput): ConfirmBookingResult {
     const existingBooking = findBookingById(input.id);
 
@@ -389,12 +487,76 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     };
   }
 
+  function confirmHeldBooking(input: ConfirmHeldBookingInput): ConfirmBookingResult {
+    const hold = findHoldById(input.holdId);
+
+    if (!hold) {
+      return {
+        status: "unavailable",
+        engine: createBookingEngine({ ...config, holds }),
+        reason: "hold-not-found"
+      };
+    }
+
+    if (parseIsoDateTime(hold.expiresAt) <= nowEpochMs) {
+      return {
+        status: "unavailable",
+        engine: createBookingEngine({ ...config, holds: holds.filter((item) => item.id !== hold.id) }),
+        reason: "hold-expired"
+      };
+    }
+
+    if (findBookingById(input.bookingId)) {
+      return {
+        status: "unavailable",
+        engine: createBookingEngine({ ...config, holds }),
+        reason: "duplicate-booking-id"
+      };
+    }
+
+    if (hasConflict(hold.slot) || hasHoldConflict(hold.slot, hold.id)) {
+      return {
+        status: "unavailable",
+        engine: createBookingEngine({ ...config, holds }),
+        reason: "slot-unavailable"
+      };
+    }
+
+    const booking: Booking = {
+      id: input.bookingId,
+      serviceId: hold.slot.serviceId,
+      start: hold.slot.start,
+      end: hold.slot.end
+    };
+
+    const nextEngine = createBookingEngine({
+      ...config,
+      bookings: [...bookings, booking],
+      holds: holds.filter((item) => item.id !== hold.id)
+    });
+
+    return {
+      status: "confirmed",
+      booking,
+      engine: nextEngine
+    };
+  }
+
   function addBooking(booking: Booking): BookingEngine {
     validateBooking(booking, new Set(services.keys()));
 
     return createBookingEngine({
       ...config,
       bookings: [...bookings, booking]
+    });
+  }
+
+  function addHold(hold: BookingHold): BookingEngine {
+    validateHold(hold, new Set(services.keys()), nowEpochMs);
+
+    return createBookingEngine({
+      ...config,
+      holds: [...holds, hold]
     });
   }
 
@@ -497,6 +659,10 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     return bookings.find((booking) => booking.id === id);
   }
 
+  function findHoldById(id: string): BookingHold | undefined {
+    return holds.find((hold) => hold.id === id);
+  }
+
   function matchesAvailabilityWindows(slot: BookingSlot, date: LocalDate): boolean {
     return getWindowsForDate(date).some((window) =>
       isSlotWithinWindow(slot, date, window, timeZone)
@@ -507,14 +673,19 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     getServices,
     getAvailableSlots,
     getSlotsWithAvailability,
+    getHolds,
     hasConflict,
     isSlotAvailable,
     getSlotAvailability,
     getAvailabilityForDate,
     getService,
     createBooking,
+    createHold,
     confirmBooking,
+    confirmHeldBooking,
     addBooking
+    ,
+    addHold
   };
 }
 
@@ -593,6 +764,10 @@ function validateConfig(config: BookingEngineConfig): void {
     validateBooking(booking, serviceIds);
   }
 
+  for (const hold of config.holds ?? []) {
+    validateHold(hold, serviceIds);
+  }
+
   for (const date of config.blackoutDates ?? []) {
     validateLocalDate(date);
   }
@@ -611,6 +786,34 @@ function validateBooking(booking: Booking, serviceIds: ReadonlySet<string>): voi
 
   if (parseIsoDateTime(booking.start) >= parseIsoDateTime(booking.end)) {
     throw new Error(`Booking '${booking.id}' must end after it starts.`);
+  }
+}
+
+function validateHold(
+  hold: BookingHold,
+  serviceIds: ReadonlySet<string>,
+  nowEpochMs?: number
+): void {
+  if (!hold.id.trim()) {
+    throw new Error("Hold id is required.");
+  }
+
+  validateSlot(hold.slot);
+
+  if (!serviceIds.has(hold.slot.serviceId)) {
+    throw new Error(`Hold '${hold.id}' references unknown service id: ${hold.slot.serviceId}`);
+  }
+
+  parseIsoDateTime(hold.expiresAt);
+
+  if (nowEpochMs !== undefined) {
+    validateHoldExpiry(hold.expiresAt, nowEpochMs);
+  }
+}
+
+function validateHoldExpiry(expiresAt: IsoDateTime, nowEpochMs: number): void {
+  if (parseIsoDateTime(expiresAt) <= nowEpochMs) {
+    throw new Error("Hold expiry must be in the future.");
   }
 }
 
@@ -683,6 +886,15 @@ function isSameBooking(existingBooking: Booking, input: ConfirmBookingInput): bo
     existingBooking.serviceId === input.slot.serviceId &&
     existingBooking.start === input.slot.start &&
     existingBooking.end === input.slot.end
+  );
+}
+
+function isSameHold(existingHold: BookingHold, input: CreateBookingHoldInput): boolean {
+  return (
+    existingHold.slot.serviceId === input.slot.serviceId &&
+    existingHold.slot.start === input.slot.start &&
+    existingHold.slot.end === input.slot.end &&
+    existingHold.expiresAt === input.expiresAt
   );
 }
 

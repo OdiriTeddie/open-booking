@@ -520,6 +520,133 @@ describe("createBookingEngine", () => {
     expect(result.engine.isSlotAvailable(slot)).toBe(false);
   });
 
+  it("creates a hold and blocks the held slot", () => {
+    const engine = createBookingEngine({
+      ...baseConfig,
+      now: "2026-07-10T08:00:00.000Z"
+    });
+    const [slot] = engine.getAvailableSlots({
+      serviceId: "consultation",
+      date: "2026-07-10"
+    });
+
+    const result = engine.createHold({
+      id: "hold-1",
+      slot,
+      expiresAt: "2026-07-10T08:30:00.000Z"
+    });
+
+    expect(result.status).toBe("held");
+    expect(result.hold).toEqual({
+      id: "hold-1",
+      slot,
+      expiresAt: "2026-07-10T08:30:00.000Z"
+    });
+    expect(result.engine.getHolds()).toEqual([
+      {
+        id: "hold-1",
+        slot,
+        expiresAt: "2026-07-10T08:30:00.000Z"
+      }
+    ]);
+    expect(result.engine.isSlotAvailable(slot)).toBe(false);
+  });
+
+  it("returns a duplicate result for an idempotent hold request", () => {
+    const slot = {
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    } as const;
+    const engine = createBookingEngine({
+      ...baseConfig,
+      now: "2026-07-10T08:00:00.000Z",
+      holds: [{ id: "hold-1", slot, expiresAt: "2026-07-10T08:30:00.000Z" }]
+    });
+
+    const result = engine.createHold({
+      id: "hold-1",
+      slot,
+      expiresAt: "2026-07-10T08:30:00.000Z"
+    });
+
+    expect(result.status).toBe("duplicate");
+    expect(result.hold).toEqual({
+      id: "hold-1",
+      slot,
+      expiresAt: "2026-07-10T08:30:00.000Z"
+    });
+  });
+
+  it("confirms a held booking and removes the hold", () => {
+    const slot = {
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    } as const;
+    const engine = createBookingEngine({
+      ...baseConfig,
+      now: "2026-07-10T08:00:00.000Z",
+      holds: [{ id: "hold-1", slot, expiresAt: "2026-07-10T08:30:00.000Z" }]
+    });
+
+    const result = engine.confirmHeldBooking({
+      holdId: "hold-1",
+      bookingId: "booking-1"
+    });
+
+    expect(result.status).toBe("confirmed");
+    expect(result.booking).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    });
+    expect(result.engine.getHolds()).toEqual([]);
+    expect(result.engine.isSlotAvailable(slot)).toBe(false);
+  });
+
+  it("rejects confirmation for missing or expired holds", () => {
+    const slot = {
+      serviceId: "consultation",
+      start: "2026-07-10T09:00:00.000Z",
+      end: "2026-07-10T09:30:00.000Z"
+    } as const;
+
+    const missingHoldEngine = createBookingEngine({
+      ...baseConfig,
+      now: "2026-07-10T08:00:00.000Z"
+    });
+
+    expect(
+      missingHoldEngine.confirmHeldBooking({
+        holdId: "hold-1",
+        bookingId: "booking-1"
+      })
+    ).toEqual({
+      status: "unavailable",
+      engine: expect.any(Object),
+      reason: "hold-not-found"
+    });
+
+    const expiredHoldEngine = createBookingEngine({
+      ...baseConfig,
+      now: "2026-07-10T08:45:00.000Z",
+      holds: [{ id: "hold-1", slot, expiresAt: "2026-07-10T08:30:00.000Z" }]
+    });
+
+    expect(
+      expiredHoldEngine.confirmHeldBooking({
+        holdId: "hold-1",
+        bookingId: "booking-1"
+      })
+    ).toEqual({
+      status: "unavailable",
+      engine: expect.any(Object),
+      reason: "hold-expired"
+    });
+  });
+
   it("returns a duplicate result for an idempotent confirm request", () => {
     const engine = createBookingEngine({
       ...baseConfig,
