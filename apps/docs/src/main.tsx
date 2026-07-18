@@ -1,5 +1,5 @@
 import { createBookingEngine } from "@openbooking/core";
-import { StrictMode, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BookingCalendar,
@@ -13,10 +13,12 @@ import {
 import "@openbooking/ui/styles.css";
 import "./styles.css";
 
+type DocsRoute = "demo" | "integration-guide";
+
 const diagnosticDates = {
-  mixed: "2026-07-10",
-  capacity: "2026-07-11",
-  blackout: "2026-07-25"
+  mixed: "2026-07-18",
+  capacity: "2026-07-25",
+  blackout: "2026-08-01"
 } as const;
 
 const services = [
@@ -37,26 +39,26 @@ const bookings = [
   {
     id: "booking-1",
     serviceId: "portrait-session",
-    start: "2026-07-10T10:00:00.000Z",
-    end: "2026-07-10T11:00:00.000Z"
+    start: "2026-07-18T10:00:00.000Z",
+    end: "2026-07-18T11:00:00.000Z"
   },
   {
     id: "booking-2",
     serviceId: "consultation",
-    start: "2026-07-11T11:30:00.000Z",
-    end: "2026-07-11T12:00:00.000Z"
+    start: "2026-07-25T11:30:00.000Z",
+    end: "2026-07-25T12:00:00.000Z"
   },
   {
     id: "booking-3",
     serviceId: "brand-shoot",
-    start: "2026-07-11T10:00:00.000Z",
-    end: "2026-07-11T11:30:00.000Z"
+    start: "2026-07-25T10:00:00.000Z",
+    end: "2026-07-25T11:30:00.000Z"
   },
   {
     id: "booking-4",
     serviceId: "portrait-session",
-    start: "2026-07-11T12:00:00.000Z",
-    end: "2026-07-11T13:00:00.000Z"
+    start: "2026-07-25T12:00:00.000Z",
+    end: "2026-07-25T13:00:00.000Z"
   }
 ];
 
@@ -164,10 +166,95 @@ app.post("/api/booking/confirm", async (request, reply) => {
 ] as const;
 
 function App() {
-  const [message, setMessage] = useState("");
-  const [selectedGuideId, setSelectedGuideId] = useState<(typeof integrationGuides)[number]["id"]>(
-    "nextjs"
+  const [route, setRoute] = useState<DocsRoute>(() => getRouteFromHash(window.location.hash));
+
+  useEffect(() => {
+    function handleHashChange(): void {
+      setRoute(getRouteFromHash(window.location.hash));
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+
+    if (!window.location.hash) {
+      window.location.hash = "#/demo";
+    }
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, []);
+
+  return (
+    <main className="demo-shell">
+      <Hero route={route} />
+      <DocsNav route={route} />
+      {route === "demo" ? <DemoPage /> : <IntegrationGuidePage />}
+    </main>
   );
+}
+
+function Hero({ route }: { route: DocsRoute }) {
+  return (
+    <section className="hero-band">
+      <div className="hero-copy">
+        <p className="eyebrow">Open Booking</p>
+        <h1>Headless booking for service businesses</h1>
+        <p className="hero-text">
+          Pure scheduling logic in <code>@openbooking/core</code>, React primitives in
+          <code>@openbooking/react</code>, and backend confirmation flows that stay
+          version-safe.
+        </p>
+        <div className="install-row">
+          <code>pnpm add @openbooking/core</code>
+          <code>pnpm add @openbooking/react react</code>
+        </div>
+      </div>
+
+      <div className="hero-aside">
+        <div className="metric">
+          <span>Current view</span>
+          <strong>{route === "demo" ? "Demo" : "Integration guide"}</strong>
+        </div>
+        <div className="metric">
+          <span>Primary stack</span>
+          <strong>TypeScript + React</strong>
+        </div>
+        <div className="metric">
+          <span>Client package</span>
+          <strong>@openbooking/react</strong>
+        </div>
+        <div className="metric">
+          <span>Server package</span>
+          <strong>@openbooking/core</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DocsNav({ route }: { route: DocsRoute }) {
+  return (
+    <nav aria-label="Docs views" className="docs-route-nav">
+      <a
+        className="docs-route-link"
+        data-selected={route === "demo"}
+        href="#/demo"
+      >
+        Demo
+      </a>
+      <a
+        className="docs-route-link"
+        data-selected={route === "integration-guide"}
+        href="#/integration-guide"
+      >
+        Integration guide
+      </a>
+    </nav>
+  );
+}
+
+function DemoPage() {
+  const [message, setMessage] = useState("");
   const booking = useBooking({
     services,
     availability,
@@ -176,12 +263,31 @@ function App() {
     bookingRules: {
       maxBookingsPerDay: 3
     },
-    blackoutDates: ["2026-07-25"],
+    blackoutDates: ["2026-08-01"],
     minimumNoticeMinutes: 120,
-    now: "2026-07-10T08:15:00.000Z",
+    now: "2026-07-18T08:15:00.000Z",
     slotIntervalMinutes: 30,
     initialDate: diagnosticDates.mixed
   });
+
+  const engine = useMemo(
+    () =>
+      createBookingEngine({
+        services,
+        availability,
+        bookings,
+        bufferMinutes: 15,
+        bookingRules: {
+          maxBookingsPerDay: 3
+        },
+        blackoutDates: ["2026-08-01"],
+        minimumNoticeMinutes: 120,
+        now: "2026-07-18T08:15:00.000Z",
+        slotIntervalMinutes: 30
+      }),
+    []
+  );
+
   const confirmation = useBookingConfirmation({
     async createHold(input) {
       return {
@@ -200,8 +306,8 @@ function App() {
         resource: {
           id: input.bookingId,
           serviceId: booking.selectedSlot?.serviceId ?? "consultation",
-          start: booking.selectedSlot?.start ?? "2026-07-24T09:00:00.000Z",
-          end: booking.selectedSlot?.end ?? "2026-07-24T09:30:00.000Z"
+          start: booking.selectedSlot?.start ?? "2026-07-18T10:00:00.000Z",
+          end: booking.selectedSlot?.end ?? "2026-07-18T10:30:00.000Z"
         },
         engine
       };
@@ -212,23 +318,6 @@ function App() {
     () => services.find((service) => service.id === booking.selectedServiceId),
     [booking.selectedServiceId]
   );
-  const engine = useMemo(
-    () =>
-      createBookingEngine({
-        services,
-        availability,
-        bookings,
-        bufferMinutes: 15,
-        bookingRules: {
-          maxBookingsPerDay: 3
-        },
-        blackoutDates: ["2026-07-25"],
-        minimumNoticeMinutes: 120,
-        now: "2026-07-10T08:15:00.000Z",
-        slotIntervalMinutes: 30
-      }),
-    []
-  );
   const availabilityForDate = engine.getAvailabilityForDate(booking.selectedDate);
   const unavailableSlots = booking.slotsWithAvailability.filter((slot) => !slot.available);
   const blockedReasonCounts = unavailableSlots.reduce<Record<string, number>>((accumulator, slot) => {
@@ -236,8 +325,6 @@ function App() {
     accumulator[reason] = (accumulator[reason] ?? 0) + 1;
     return accumulator;
   }, {});
-  const selectedGuide =
-    integrationGuides.find((guide) => guide.id === selectedGuideId) ?? integrationGuides[0];
   const liveCoreSnippet = `import { createBookingEngine } from "@openbooking/core";
 
 const engine = createBookingEngine({
@@ -246,9 +333,9 @@ const engine = createBookingEngine({
   bookings,
   bufferMinutes: 15,
   bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["2026-07-25"],
+  blackoutDates: ["2026-08-01"],
   minimumNoticeMinutes: 120,
-  now: "2026-07-10T08:15:00.000Z"
+  now: "2026-07-18T08:15:00.000Z"
 });
 
 const slotAvailability = engine.getSlotsWithAvailability({
@@ -261,10 +348,14 @@ const slotAvailability = engine.getSlotsWithAvailability({
   bookings,
   bufferMinutes: 15,
   bookingRules: { maxBookingsPerDay: 3 },
-  blackoutDates: ["2026-07-25"],
+  blackoutDates: ["2026-08-01"],
   minimumNoticeMinutes: 120,
-  now: "2026-07-10T08:15:00.000Z",
+  now: "2026-07-18T08:15:00.000Z",
   initialDate: "${booking.selectedDate}"
+});`;
+  const reactApiSnippet = `const confirmation = useBookingConfirmation({
+  createHold: (input) => api.createHold(input),
+  confirmHeldBooking: (input) => api.confirmHeldBooking(input)
 });`;
   const serverFlowSnippet = `import { confirmBookingWithRetry } from "@openbooking/core";
 
@@ -278,325 +369,300 @@ const confirmation = await confirmBookingWithRetry({
   now: "2026-07-18T12:05:00.000Z",
   maxVersionRetries: 1
 });`;
-  const reactApiSnippet = `const confirmation = useBookingConfirmation({
-  createHold: (input) => api.createHold(input),
-  confirmHeldBooking: (input) => api.confirmHeldBooking(input)
-});`;
 
   return (
-    <main className="demo-shell">
-      <section className="hero-band">
-        <div className="hero-copy">
-          <p className="eyebrow">Open Booking</p>
-          <h1>Headless booking for service businesses</h1>
-          <p className="hero-text">
-            Pure scheduling logic in <code>@openbooking/core</code>, React primitives in
-            <code>@openbooking/react</code>, and a small-business booking flow you can
-            inspect live.
-          </p>
-          <div className="install-row">
-            <code>pnpm add @openbooking/core</code>
-            <code>pnpm add @openbooking/react react</code>
-          </div>
-        </div>
-
-        <div className="hero-aside">
-          <div className="metric">
-            <span>Selected service</span>
-            <strong>{selectedService?.name ?? "None"}</strong>
-          </div>
-          <div className="metric">
-            <span>Available slots</span>
-            <strong>{booking.slots.length}</strong>
-          </div>
-          <div className="metric">
-            <span>Unavailable slots</span>
-            <strong>{unavailableSlots.length}</strong>
-          </div>
-          <div className="metric">
-            <span>Availability windows</span>
-            <strong>{availabilityForDate.windows.length}</strong>
-          </div>
-          <div className="metric">
-            <span>Blackout date</span>
-            <strong>{availabilityForDate.isBlackoutDate ? "Yes" : "No"}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="content-grid">
-        <section className="docs-stack">
-          <div className="docs-panel">
-            <div className="section-heading">
-              <p>Packages</p>
-              <h2>Core and React, side by side</h2>
-            </div>
-            <div className="comparison-grid">
-              <article className="comparison-card">
-                <h3>@openbooking/core</h3>
-                <p>
-                  Pure TypeScript engine for services, weekly availability, blackout
-                  dates, conflicts, buffers, and slot generation.
-                </p>
-              </article>
-              <article className="comparison-card">
-                <h3>@openbooking/react</h3>
-                <p>
-                  Hooks and starter components that wrap the core engine without moving
-                  scheduling rules into the UI layer.
-                </p>
-              </article>
-            </div>
-          </div>
-
-          <div className="docs-panel">
-            <div className="section-heading">
-              <p>Diagnostics</p>
-              <h2>Preset dates that expose blocked states</h2>
-            </div>
-            <div className="scenario-row">
-              <button
-                className="scenario-chip"
-                data-selected={booking.selectedDate === diagnosticDates.mixed}
-                onClick={() => booking.selectDate(diagnosticDates.mixed)}
-                type="button"
-              >
-                July 10
-                <small>Notice + conflicts</small>
-              </button>
-              <button
-                className="scenario-chip"
-                data-selected={booking.selectedDate === diagnosticDates.capacity}
-                onClick={() => booking.selectDate(diagnosticDates.capacity)}
-                type="button"
-              >
-                July 11
-                <small>Daily cap reached</small>
-              </button>
-              <button
-                className="scenario-chip"
-                data-selected={booking.selectedDate === diagnosticDates.blackout}
-                onClick={() => booking.selectDate(diagnosticDates.blackout)}
-                type="button"
-              >
-                July 25
-                <small>Blackout date</small>
-              </button>
-            </div>
-            <div className="inspector-grid">
-              <div className="inspector-card">
-                <span>Weekday</span>
-                <strong>{availabilityForDate.weekday}</strong>
-              </div>
-              <div className="inspector-card">
-                <span>Windows</span>
-                <strong>
-                  {availabilityForDate.windows.map((window) => `${window.start}-${window.end}`).join(", ")}
-                </strong>
-              </div>
-              <div className="inspector-card">
-                <span>First slot</span>
-                <strong>{booking.slots[0]?.start ?? "No slot"}</strong>
-              </div>
-              <div className="inspector-card">
-                <span>First blocked reason</span>
-                <strong>{unavailableSlots[0]?.reason ?? "None"}</strong>
-              </div>
-            </div>
-            <div className="reason-list" aria-label="Blocked slot reasons">
-              {Object.entries(blockedReasonCounts).length === 0 ? (
-                <p className="reason-empty">
-                  {availabilityForDate.isBlackoutDate
-                    ? "This date is fully blocked by a blackout rule."
-                    : "No blocked slot reasons for the current date."}
-                </p>
-              ) : (
-                Object.entries(blockedReasonCounts).map(([reason, count]) => (
-                  <div className="reason-row" key={reason}>
-                    <span>{formatReasonLabel(reason)}</span>
-                    <strong>{count}</strong>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="code-grid">
-              <article className="code-panel">
-                <h3>Core usage</h3>
-                <pre>{liveCoreSnippet}</pre>
-              </article>
-              <article className="code-panel">
-                <h3>React usage</h3>
-                <pre>{liveReactSnippet}</pre>
-              </article>
-            </div>
-          </div>
-
-          <div className="docs-panel">
-            <div className="section-heading">
-              <p>API flow</p>
-              <h2>React client, core-backed server confirm</h2>
-            </div>
-            <div className="comparison-grid">
-              <article className="comparison-card">
-                <h3>Client</h3>
-                <p>
-                  Use <code>useBookingConfirmation</code> to request holds and confirm
-                  bookings against your own backend endpoints.
-                </p>
-                <pre>{reactApiSnippet}</pre>
-              </article>
-              <article className="comparison-card">
-                <h3>Server</h3>
-                <p>
-                  Use <code>confirmBookingWithRetry</code> on the server for final
-                  validation, version-safe confirmation, and one bounded retry.
-                </p>
-                <pre>{serverFlowSnippet}</pre>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section className="demo-pane" aria-label="Booking demo">
-          <div className="docs-panel">
-            <div className="section-heading">
-              <p>Demo flow</p>
-              <h2>Small studio booking</h2>
-            </div>
-            <div className="booking-grid">
-              <div className="booking-panel">
-                <h3>1. Service</h3>
-                <ServiceSelector
-                  services={booking.services}
-                  selectedServiceId={booking.selectedServiceId}
-                  onSelectService={booking.selectService}
-                />
-              </div>
-
-              <div className="booking-panel">
-                <h3>2. Date</h3>
-                <BookingCalendar
-                  selectedDate={booking.selectedDate}
-                  onSelectDate={booking.selectDate}
-                />
-              </div>
-
-              <div className="booking-panel booking-panel-wide">
-                <h3>3. Time</h3>
-                <TimeSlots
-                  slots={booking.slots}
-                  diagnosedSlots={booking.slotsWithAvailability}
-                  selectedSlot={booking.selectedSlot}
-                  onSelectSlot={booking.selectSlot}
-                />
-              </div>
-
-              <div className="booking-panel">
-                <BookingSummary service={selectedService} slot={booking.selectedSlot} />
-              </div>
-
-              <div className="booking-panel">
-                <h3>4. Details</h3>
-                <BookingForm
-                  disabled={!booking.selectedSlot}
-                  onSubmit={async (values) => {
-                    if (!booking.selectedSlot) {
-                      return;
-                    }
-
-                    const holdResult = await confirmation.requestHold({
-                      id: "hold-demo",
-                      slot: booking.selectedSlot,
-                      expiresAt: "2026-07-18T12:10:00.000Z"
-                    });
-
-                    if (holdResult.status === "unavailable") {
-                      setMessage(`Hold failed: ${holdResult.reason}.`);
-                      return;
-                    }
-
-                    if (holdResult.status === "duplicate") {
-                      setMessage("Hold already exists for the selected slot.");
-                      return;
-                    }
-
-                    const confirmResult = await confirmation.confirmHeldSlot({
-                      holdId: holdResult.resource.id,
-                      bookingId: "booking-demo"
-                    });
-
-                    if (confirmResult.status === "confirmed") {
-                      setMessage(
-                        `Booking request received for ${values.name} at ${confirmResult.resource.start}.`
-                      );
-                      return;
-                    }
-
-                    if (confirmResult.status === "duplicate") {
-                      setMessage("Booking already exists for this hold.");
-                      return;
-                    }
-
-                    setMessage(`Confirmation failed: ${confirmResult.reason}.`);
-                  }}
-                />
-                {message ? <p className="demo-message">{message}</p> : null}
-              </div>
-            </div>
-          </div>
-        </section>
-      </section>
-
-      <section className="integration-guide" aria-label="Integration guide">
+    <section className="content-grid">
+      <section className="docs-stack">
         <div className="docs-panel">
           <div className="section-heading">
-            <p>Integration guide</p>
-            <h2>Framework-specific server confirmation examples</h2>
+            <p>Packages</p>
+            <h2>Core and React, side by side</h2>
           </div>
-          <p className="guide-intro">
-            The client keeps using <code>useBookingConfirmation</code>. The server owns
-            hold persistence, final validation, and optimistic concurrency through
-            <code>confirmBookingWithRetry</code>.
-          </p>
-          <div className="guide-tabs" role="tablist" aria-label="Framework examples">
-            {integrationGuides.map((guide) => (
-              <button
-                aria-selected={guide.id === selectedGuide.id}
-                className="guide-tab"
-                data-selected={guide.id === selectedGuide.id}
-                key={guide.id}
-                onClick={() => setSelectedGuideId(guide.id)}
-                role="tab"
-                type="button"
-              >
-                {guide.label}
-              </button>
-            ))}
+          <div className="comparison-grid">
+            <article className="comparison-card">
+              <h3>@openbooking/core</h3>
+              <p>
+                Pure TypeScript engine for services, weekly availability, blackout
+                dates, conflicts, buffers, and slot generation.
+              </p>
+            </article>
+            <article className="comparison-card">
+              <h3>@openbooking/react</h3>
+              <p>
+                Hooks and starter components that wrap the core engine without moving
+                scheduling rules into the UI layer.
+              </p>
+            </article>
           </div>
-          <div className="guide-layout">
-            <div className="guide-copy">
-              <div className="guide-card">
-                <span>Framework</span>
-                <strong>{selectedGuide.title}</strong>
-              </div>
-              <div className="guide-card">
-                <span>Pattern</span>
-                <strong>Hold on client, confirm on server</strong>
-              </div>
-              <div className="guide-card guide-card-wide">
-                <span>Notes</span>
-                <strong>{selectedGuide.description}</strong>
-              </div>
+        </div>
+
+        <div className="docs-panel">
+          <div className="section-heading">
+            <p>Diagnostics</p>
+            <h2>Preset dates that expose blocked states</h2>
+          </div>
+          <div className="scenario-row">
+            <button
+              className="scenario-chip"
+              data-selected={booking.selectedDate === diagnosticDates.mixed}
+              onClick={() => booking.selectDate(diagnosticDates.mixed)}
+              type="button"
+            >
+              July 18
+              <small>Notice + conflicts</small>
+            </button>
+            <button
+              className="scenario-chip"
+              data-selected={booking.selectedDate === diagnosticDates.capacity}
+              onClick={() => booking.selectDate(diagnosticDates.capacity)}
+              type="button"
+            >
+              July 25
+              <small>Daily cap reached</small>
+            </button>
+            <button
+              className="scenario-chip"
+              data-selected={booking.selectedDate === diagnosticDates.blackout}
+              onClick={() => booking.selectDate(diagnosticDates.blackout)}
+              type="button"
+            >
+              Aug 1
+              <small>Blackout date</small>
+            </button>
+          </div>
+          <div className="inspector-grid">
+            <div className="inspector-card">
+              <span>Weekday</span>
+              <strong>{availabilityForDate.weekday}</strong>
             </div>
+            <div className="inspector-card">
+              <span>Windows</span>
+              <strong>
+                {availabilityForDate.windows
+                  .map((window) => `${window.start}-${window.end}`)
+                  .join(", ")}
+              </strong>
+            </div>
+            <div className="inspector-card">
+              <span>First slot</span>
+              <strong>{booking.slots[0]?.start ?? "No slot"}</strong>
+            </div>
+            <div className="inspector-card">
+              <span>First blocked reason</span>
+              <strong>{unavailableSlots[0]?.reason ?? "None"}</strong>
+            </div>
+          </div>
+          <div className="reason-list" aria-label="Blocked slot reasons">
+            {Object.entries(blockedReasonCounts).length === 0 ? (
+              <p className="reason-empty">
+                {availabilityForDate.isBlackoutDate
+                  ? "This date is fully blocked by a blackout rule."
+                  : "No blocked slot reasons for the current date."}
+              </p>
+            ) : (
+              Object.entries(blockedReasonCounts).map(([reason, count]) => (
+                <div className="reason-row" key={reason}>
+                  <span>{formatReasonLabel(reason)}</span>
+                  <strong>{count}</strong>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="code-grid">
             <article className="code-panel">
-              <h3>{selectedGuide.title}</h3>
-              <pre>{selectedGuide.snippet}</pre>
+              <h3>Core usage</h3>
+              <pre>{liveCoreSnippet}</pre>
+            </article>
+            <article className="code-panel">
+              <h3>React usage</h3>
+              <pre>{liveReactSnippet}</pre>
+            </article>
+          </div>
+        </div>
+
+        <div className="docs-panel">
+          <div className="section-heading">
+            <p>API flow</p>
+            <h2>React client, core-backed server confirm</h2>
+          </div>
+          <div className="comparison-grid">
+            <article className="comparison-card">
+              <h3>Client</h3>
+              <p>
+                Use <code>useBookingConfirmation</code> to request holds and confirm
+                bookings against your own backend endpoints.
+              </p>
+              <pre>{reactApiSnippet}</pre>
+            </article>
+            <article className="comparison-card">
+              <h3>Server</h3>
+              <p>
+                Use <code>confirmBookingWithRetry</code> on the server for final
+                validation, version-safe confirmation, and one bounded retry.
+              </p>
+              <pre>{serverFlowSnippet}</pre>
             </article>
           </div>
         </div>
       </section>
-    </main>
+
+      <section className="demo-pane" aria-label="Booking demo">
+        <div className="docs-panel">
+          <div className="section-heading">
+            <p>Demo flow</p>
+            <h2>Small studio booking</h2>
+          </div>
+          <div className="booking-grid">
+            <div className="booking-panel">
+              <h3>1. Service</h3>
+              <ServiceSelector
+                services={booking.services}
+                selectedServiceId={booking.selectedServiceId}
+                onSelectService={booking.selectService}
+              />
+            </div>
+
+            <div className="booking-panel">
+              <h3>2. Date</h3>
+              <BookingCalendar
+                selectedDate={booking.selectedDate}
+                onSelectDate={booking.selectDate}
+              />
+            </div>
+
+            <div className="booking-panel booking-panel-wide">
+              <h3>3. Time</h3>
+              <TimeSlots
+                slots={booking.slots}
+                diagnosedSlots={booking.slotsWithAvailability}
+                selectedSlot={booking.selectedSlot}
+                onSelectSlot={booking.selectSlot}
+              />
+            </div>
+
+            <div className="booking-panel">
+              <BookingSummary service={selectedService} slot={booking.selectedSlot} />
+            </div>
+
+            <div className="booking-panel">
+              <h3>4. Details</h3>
+              <BookingForm
+                disabled={!booking.selectedSlot}
+                onSubmit={async (values) => {
+                  if (!booking.selectedSlot) {
+                    return;
+                  }
+
+                  const holdResult = await confirmation.requestHold({
+                    id: "hold-demo",
+                    slot: booking.selectedSlot,
+                    expiresAt: "2026-07-18T12:10:00.000Z"
+                  });
+
+                  if (holdResult.status === "unavailable") {
+                    setMessage(`Hold failed: ${holdResult.reason}.`);
+                    return;
+                  }
+
+                  if (holdResult.status === "duplicate") {
+                    setMessage("Hold already exists for the selected slot.");
+                    return;
+                  }
+
+                  const confirmResult = await confirmation.confirmHeldSlot({
+                    holdId: holdResult.resource.id,
+                    bookingId: "booking-demo"
+                  });
+
+                  if (confirmResult.status === "confirmed") {
+                    setMessage(
+                      `Booking request received for ${values.name} at ${confirmResult.resource.start}.`
+                    );
+                    return;
+                  }
+
+                  if (confirmResult.status === "duplicate") {
+                    setMessage("Booking already exists for this hold.");
+                    return;
+                  }
+
+                  setMessage(`Confirmation failed: ${confirmResult.reason}.`);
+                }}
+              />
+              {message ? <p className="demo-message">{message}</p> : null}
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
   );
+}
+
+function IntegrationGuidePage() {
+  const [selectedGuideId, setSelectedGuideId] = useState<(typeof integrationGuides)[number]["id"]>(
+    "nextjs"
+  );
+  const selectedGuide =
+    integrationGuides.find((guide) => guide.id === selectedGuideId) ?? integrationGuides[0];
+
+  return (
+    <section className="integration-guide" aria-label="Integration guide">
+      <div className="docs-panel">
+        <div className="section-heading">
+          <p>Integration guide</p>
+          <h2>Framework-specific server confirmation examples</h2>
+        </div>
+        <p className="guide-intro">
+          The client keeps using <code>useBookingConfirmation</code>. The server owns
+          hold persistence, final validation, and optimistic concurrency through
+          <code>confirmBookingWithRetry</code>.
+        </p>
+        <div className="guide-tabs" role="tablist" aria-label="Framework examples">
+          {integrationGuides.map((guide) => (
+            <button
+              aria-selected={guide.id === selectedGuide.id}
+              className="guide-tab"
+              data-selected={guide.id === selectedGuide.id}
+              key={guide.id}
+              onClick={() => setSelectedGuideId(guide.id)}
+              role="tab"
+              type="button"
+            >
+              {guide.label}
+            </button>
+          ))}
+        </div>
+        <div className="guide-layout">
+          <div className="guide-copy">
+            <div className="guide-card">
+              <span>Framework</span>
+              <strong>{selectedGuide.title}</strong>
+            </div>
+            <div className="guide-card">
+              <span>Pattern</span>
+              <strong>Hold on client, confirm on server</strong>
+            </div>
+            <div className="guide-card guide-card-wide">
+              <span>Notes</span>
+              <strong>{selectedGuide.description}</strong>
+            </div>
+          </div>
+          <article className="code-panel">
+            <h3>{selectedGuide.title}</h3>
+            <pre>{selectedGuide.snippet}</pre>
+          </article>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function getRouteFromHash(hash: string): DocsRoute {
+  if (hash === "#/integration-guide") {
+    return "integration-guide";
+  }
+
+  return "demo";
 }
 
 function formatReasonLabel(reason: string): string {

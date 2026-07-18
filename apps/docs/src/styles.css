@@ -50,6 +50,27 @@ code {
   margin-bottom: 18px;
 }
 
+.docs-route-nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.docs-route-link {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 0.8rem 1rem;
+  text-decoration: none;
+}
+
+.docs-route-link[data-selected="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .hero-copy,
 .hero-aside,
 .docs-panel {
@@ -384,6 +405,10 @@ code {
 @media (max-width: 760px) {
   .demo-shell {
     padding: 18px 12px 40px;
+  }
+
+  .docs-route-nav {
+    flex-direction: column;
   }
 
   .hero-copy {
