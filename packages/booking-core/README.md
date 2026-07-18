@@ -97,6 +97,7 @@ const slots = engine.getAvailableSlots({
 - `loadBookingEngineFromRepository({ ...config, repository })`
 - `confirmBookingWithVersion({ ...config, repository, expectedVersion, bookingId, slot })`
 - `confirmBookingWithVersionUsingEngine({ engine, repository, expectedVersion, bookingId, slot })`
+- `confirmBookingWithRetry({ ...config, repository, bookingId, slot, maxVersionRetries? })`
 - `createInMemoryRepository({ bookings?, holds?, initialVersion? })`
 
 ## Time Zone Model
@@ -202,6 +203,8 @@ const { engine, snapshot } = await loadBookingEngineFromRepository({
   - attempts an optimistic-concurrency commit with `expectedVersion`
 - `confirmBookingWithVersionUsingEngine(...)` reuses an already-hydrated engine
   and commits against the expected version without repeating scheduling config.
+- `confirmBookingWithRetry(...)` wraps `load + confirm + retry-on-version-mismatch`
+  for server-side optimistic-concurrency flows.
 - if the stored version has changed, the result is
   `status: "unavailable"` with `reason: "version-mismatch"`.
 
@@ -296,6 +299,27 @@ Recommended server sequence:
 3. Call `confirmBookingWithVersionUsingEngine(...)` with the repository version.
 4. On `version-mismatch`, reload and retry with fresh availability data.
 5. On success, persist the booking and release the hold in the same repository commit.
+
+## Optimistic Concurrency Helper
+
+```ts
+import { confirmBookingWithRetry } from "@openbooking/core";
+
+const confirmation = await confirmBookingWithRetry({
+  services,
+  availability,
+  repository,
+  bookingId: "booking-42",
+  holdId: "hold-42",
+  slot,
+  now: "2026-07-18T12:05:00.000Z",
+  maxVersionRetries: 1
+});
+
+if (confirmation.status === "confirmed") {
+  return confirmation.resource;
+}
+```
 
 ## Backend Integration Examples
 
@@ -401,37 +425,17 @@ if (confirmation.status === "confirmed") {
 ### Retry On Version Mismatch
 
 ```ts
-const { engine: firstEngine } = await loadBookingEngineFromRepository({
+import { confirmBookingWithRetry } from "@openbooking/core";
+
+const result = await confirmBookingWithRetry({
   services,
   availability,
   repository,
-  now: "2026-07-18T12:05:00.000Z"
-});
-
-const firstAttempt = await confirmBookingWithVersionUsingEngine({
-  engine: firstEngine,
-  repository,
-  expectedVersion: staleVersion,
   bookingId: "booking-42",
-  slot
+  slot,
+  now: "2026-07-18T12:05:00.000Z",
+  maxVersionRetries: 1
 });
-
-if (firstAttempt.status === "unavailable" && firstAttempt.reason === "version-mismatch") {
-  const { engine: freshEngine, snapshot: freshSnapshot } = await loadBookingEngineFromRepository({
-    services,
-    availability,
-    repository,
-    now: "2026-07-18T12:05:00.000Z"
-  });
-
-  return confirmBookingWithVersionUsingEngine({
-    engine: freshEngine,
-    repository,
-    expectedVersion: freshSnapshot.version,
-    bookingId: "booking-42",
-    slot
-  });
-}
 ```
 
 ## Availability Diagnostics

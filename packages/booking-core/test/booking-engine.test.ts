@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   confirmBookingWithVersion,
+  confirmBookingWithRetry,
   confirmBookingWithVersionUsingEngine,
   createInMemoryRepository,
   createBookingEngine,
@@ -1556,6 +1557,102 @@ describe("createBookingEngine", () => {
     expect(result).toEqual({
       status: "unavailable",
       engine,
+      reason: "version-mismatch"
+    });
+  });
+
+  it("retries versioned confirmation after a version mismatch and confirms on the next snapshot", async () => {
+    let snapshotReadCount = 0;
+    let committed = false;
+
+    const repository = {
+      async getSnapshot() {
+        snapshotReadCount += 1;
+
+        if (snapshotReadCount === 1) {
+          return {
+            version: 1,
+            bookings: [],
+            holds: []
+          };
+        }
+
+        return {
+          version: 2,
+          bookings: [],
+          holds: []
+        };
+      },
+      async saveBooking() {},
+      async saveHold() {},
+      async releaseHold() {},
+      async commitBookingChange(input: { expectedVersion: string | number }) {
+        if (input.expectedVersion === 1) {
+          return {
+            status: "version-mismatch" as const
+          };
+        }
+
+        committed = true;
+
+        return {
+          status: "committed" as const
+        };
+      }
+    };
+
+    const result = await confirmBookingWithRetry({
+      ...baseConfig,
+      repository,
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      },
+      now: "2026-07-18T09:00:00.000Z"
+    });
+
+    expect(snapshotReadCount).toBe(2);
+    expect(committed).toBe(true);
+    expect(result.status).toBe("confirmed");
+  });
+
+  it("returns version-mismatch after exhausting retry attempts", async () => {
+    const repository = {
+      async getSnapshot() {
+        return {
+          version: 1,
+          bookings: [],
+          holds: []
+        };
+      },
+      async saveBooking() {},
+      async saveHold() {},
+      async releaseHold() {},
+      async commitBookingChange() {
+        return {
+          status: "version-mismatch" as const
+        };
+      }
+    };
+
+    const result = await confirmBookingWithRetry({
+      ...baseConfig,
+      repository,
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      },
+      now: "2026-07-18T09:00:00.000Z",
+      maxVersionRetries: 0
+    });
+
+    expect(result).toEqual({
+      status: "unavailable",
+      engine: expect.any(Object),
       reason: "version-mismatch"
     });
   });

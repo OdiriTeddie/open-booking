@@ -204,6 +204,16 @@ export interface ConfirmBookingWithVersionUsingEngineInput {
   holdId?: string;
 }
 
+/** Input for optimistic-concurrency confirmation with a bounded retry-on-stale-version flow. */
+export interface ConfirmBookingWithRetryInput
+  extends Omit<CreateBookingEngineFromRepositoryInput, "repository"> {
+  repository: VersionedBookingRepository;
+  bookingId: string;
+  slot: BookingSlot;
+  holdId?: string;
+  maxVersionRetries?: number;
+}
+
 /** Seed data for the built-in in-memory repository helper. */
 export interface InMemoryBookingRepositoryInput {
   bookings?: readonly Booking[];
@@ -1040,6 +1050,63 @@ export async function confirmBookingWithVersionUsingEngine(
   }
 
   return confirmation;
+}
+
+/**
+ * Loads the latest repository snapshot, attempts a versioned confirmation, and
+ * retries on `version-mismatch` up to `maxVersionRetries`.
+ */
+export async function confirmBookingWithRetry(
+  input: ConfirmBookingWithRetryInput
+): Promise<BookingConfirmationResult> {
+  const maxVersionRetries = input.maxVersionRetries ?? 1;
+
+  if (!Number.isInteger(maxVersionRetries) || maxVersionRetries < 0) {
+    throw new Error("maxVersionRetries must be a non-negative integer.");
+  }
+
+  for (let attempt = 0; attempt <= maxVersionRetries; attempt += 1) {
+    const { engine, snapshot } = await loadBookingEngineFromRepository({
+      services: input.services,
+      availability: input.availability,
+      repository: input.repository,
+      bufferMinutes: input.bufferMinutes,
+      blackoutDates: input.blackoutDates,
+      dateOverrides: input.dateOverrides,
+      recurringAvailability: input.recurringAvailability,
+      recurringBlackoutRules: input.recurringBlackoutRules,
+      bookingRules: input.bookingRules,
+      minimumNoticeMinutes: input.minimumNoticeMinutes,
+      maxAdvanceDays: input.maxAdvanceDays,
+      now: input.now,
+      slotIntervalMinutes: input.slotIntervalMinutes,
+      timeZone: input.timeZone
+    });
+
+    const confirmation = await confirmBookingWithVersionUsingEngine({
+      engine,
+      repository: input.repository,
+      expectedVersion:
+        "version" in snapshot
+          ? snapshot.version
+          : (() => {
+              throw new Error("Versioned confirmation requires a repository snapshot version.");
+            })(),
+      bookingId: input.bookingId,
+      slot: input.slot,
+      holdId: input.holdId
+    });
+
+    if (
+      confirmation.status !== "unavailable" ||
+      confirmation.reason !== "version-mismatch" ||
+      attempt === maxVersionRetries
+    ) {
+      return confirmation;
+    }
+  }
+
+  throw new Error("Unreachable confirmation retry state.");
 }
 
 function validateConfig(config: BookingEngineConfig): void {
