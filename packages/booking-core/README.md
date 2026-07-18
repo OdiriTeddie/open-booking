@@ -172,6 +172,102 @@ const slots = engine.getAvailableSlots({
 - if the stored version has changed, the result is
   `status: "unavailable"` with `reason: "version-mismatch"`.
 
+## Server-Side Confirm Flow
+
+```ts
+import {
+  confirmBookingWithVersion,
+  createBookingEngineFromRepository,
+  type BookingRepositoryVersion,
+  type VersionedBookingRepository
+} from "@openbooking/core";
+
+const repository: VersionedBookingRepository = {
+  async getSnapshot() {
+    return {
+      version: 12 satisfies BookingRepositoryVersion,
+      bookings: [],
+      holds: [
+        {
+          id: "hold-1",
+          slot: {
+            serviceId: "consultation",
+            start: "2026-07-24T09:00:00.000Z",
+            end: "2026-07-24T09:30:00.000Z"
+          },
+          expiresAt: "2026-07-18T12:10:00.000Z"
+        }
+      ]
+    };
+  },
+  async commitBookingChange({ expectedVersion, booking, releaseHoldId }) {
+    const currentVersion = 12;
+
+    if (expectedVersion !== currentVersion) {
+      return { status: "version-mismatch" as const };
+    }
+
+    await db.insertBooking(booking);
+
+    if (releaseHoldId) {
+      await db.deleteHold(releaseHoldId);
+    }
+
+    return { status: "committed" as const };
+  }
+};
+
+const engine = await createBookingEngineFromRepository({
+  services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+  availability: {
+    friday: [{ start: "09:00", end: "17:00" }]
+  },
+  repository,
+  now: "2026-07-18T12:00:00.000Z"
+});
+
+const confirmation = await confirmBookingWithVersion({
+  services: engine.getServices(),
+  availability: {
+    friday: [{ start: "09:00", end: "17:00" }]
+  },
+  repository,
+  expectedVersion: 12,
+  holdId: "hold-1",
+  bookingId: "booking-42",
+  slot: {
+    serviceId: "consultation",
+    start: "2026-07-24T09:00:00.000Z",
+    end: "2026-07-24T09:30:00.000Z"
+  },
+  now: "2026-07-18T12:00:00.000Z"
+});
+
+if (confirmation.status === "confirmed") {
+  return confirmation.booking;
+}
+
+if (confirmation.reason === "version-mismatch") {
+  // Reload the latest snapshot, rebuild the engine, and retry or return 409.
+}
+
+if (confirmation.reason === "hold-expired") {
+  // Ask the client to request a new hold.
+}
+
+if (confirmation.reason === "slot-unavailable") {
+  // Return the latest slot availability to the client.
+}
+```
+
+Recommended server sequence:
+
+1. Create or load a hold for the requested slot.
+2. Read a versioned snapshot from storage.
+3. Call `confirmBookingWithVersion(...)` with the repository version.
+4. On `version-mismatch`, reload and retry with fresh availability data.
+5. On success, persist the booking and release the hold in the same repository commit.
+
 ## Availability Diagnostics
 
 - `getSlotAvailability(slot)` returns `{ available, reason? }`.
