@@ -69,6 +69,32 @@ const booking = engine.createBooking({
 const nextEngine = engine.addBooking(booking);
 ```
 
+## React And API Flow
+
+The intended production split is:
+
+- `@openbooking/react` for service/date/slot selection and form state
+- your backend for hold creation and final confirmation
+- `@openbooking/core` on the server for final slot validation and optimistic concurrency
+
+```ts
+import { confirmBookingWithRetry } from "@openbooking/core";
+
+const confirmation = await confirmBookingWithRetry({
+  services,
+  availability,
+  repository,
+  bookingId: "booking-42",
+  holdId: "hold-42",
+  slot,
+  now: "2026-07-18T12:05:00.000Z",
+  maxVersionRetries: 1
+});
+```
+
+Use `useBookingConfirmation(...)` in React to call those backend endpoints,
+while keeping conflict checks and final booking rules in core.
+
 ### Time Types
 
 - `LocalDate`: `YYYY-MM-DD`
