@@ -14,6 +14,7 @@ pnpm add @openbooking/react @openbooking/core react
 ## Exports
 
 - `useBooking`
+- `useBookingConfirmation`
 - `BookingCalendar`
 - `ServiceSelector`
 - `TimeSlots`
@@ -23,14 +24,25 @@ pnpm add @openbooking/react @openbooking/core react
 ## Example
 
 ```tsx
-import { BookingCalendar, ServiceSelector, TimeSlots, useBooking } from "@openbooking/react";
+import {
+  BookingCalendar,
+  ServiceSelector,
+  TimeSlots,
+  useBooking,
+  useBookingConfirmation
+} from "@openbooking/react";
 
 const booking = useBooking({
   services,
   availability,
   bookings,
   bufferMinutes: 15,
-  initialDate: "2026-07-10"
+  initialDate: "2026-07-24"
+});
+
+const confirmation = useBookingConfirmation({
+  createHold: (input) => api.createHold(input),
+  confirmHeldBooking: (input) => api.confirmHeldBooking(input)
 });
 ```
 
@@ -38,4 +50,5 @@ const booking = useBooking({
 
 - React state and composition
 - starter booking UI
+- server action orchestration for hold and confirm flows
 - no booking rules beyond what comes from `@openbooking/core`

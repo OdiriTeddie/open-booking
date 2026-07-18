@@ -4,3 +4,8 @@ export { BookingSummary, type BookingSummaryProps } from "./components/BookingSu
 export { ServiceSelector, type ServiceSelectorProps } from "./components/ServiceSelector";
 export { TimeSlots, type TimeSlotsProps } from "./components/TimeSlots";
 export { useBooking, type UseBookingInput } from "./useBooking";
+export {
+  useBookingConfirmation,
+  type BookingConfirmationState,
+  type UseBookingConfirmationInput
+} from "./useBookingConfirmation";
