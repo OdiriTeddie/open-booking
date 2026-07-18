@@ -97,6 +97,28 @@ export interface BookingEngineConfig {
   timeZone?: string;
 }
 
+export interface BookingRepositorySnapshot {
+  bookings: readonly Booking[];
+  holds: readonly BookingHold[];
+}
+
+export interface BookingRepositoryReader {
+  getSnapshot(): Promise<BookingRepositorySnapshot>;
+}
+
+export interface BookingRepositoryWriter {
+  saveBooking(booking: Booking): Promise<void>;
+  saveHold(hold: BookingHold): Promise<void>;
+  releaseHold(holdId: string): Promise<void>;
+}
+
+export interface BookingRepository extends BookingRepositoryReader, BookingRepositoryWriter {}
+
+export interface CreateBookingEngineFromRepositoryInput
+  extends Omit<BookingEngineConfig, "bookings" | "holds"> {
+  repository: BookingRepositoryReader;
+}
+
 export interface GetAvailableSlotsInput {
   serviceId: string;
   date: LocalDate;
@@ -687,6 +709,30 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
     ,
     addHold
   };
+}
+
+export async function createBookingEngineFromRepository(
+  input: CreateBookingEngineFromRepositoryInput
+): Promise<BookingEngine> {
+  const snapshot = await input.repository.getSnapshot();
+
+  return createBookingEngine({
+    services: input.services,
+    availability: input.availability,
+    bookings: snapshot.bookings,
+    holds: snapshot.holds,
+    bufferMinutes: input.bufferMinutes,
+    blackoutDates: input.blackoutDates,
+    dateOverrides: input.dateOverrides,
+    recurringAvailability: input.recurringAvailability,
+    recurringBlackoutRules: input.recurringBlackoutRules,
+    bookingRules: input.bookingRules,
+    minimumNoticeMinutes: input.minimumNoticeMinutes,
+    maxAdvanceDays: input.maxAdvanceDays,
+    now: input.now,
+    slotIntervalMinutes: input.slotIntervalMinutes,
+    timeZone: input.timeZone
+  });
 }
 
 function validateConfig(config: BookingEngineConfig): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBookingEngine } from "../src";
+import { createBookingEngine, createBookingEngineFromRepository } from "../src";
 
 const baseConfig = {
   services: [
@@ -1246,5 +1246,97 @@ describe("createBookingEngine", () => {
         }
       })
     ).toThrow("Duplicate service id: consultation");
+  });
+
+  it("creates an engine from a repository snapshot", async () => {
+    const repository = {
+      async getSnapshot() {
+        return {
+          bookings: [
+            {
+              id: "booking-1",
+              serviceId: "consultation",
+              start: "2026-07-10T09:00:00.000Z",
+              end: "2026-07-10T09:30:00.000Z"
+            }
+          ],
+          holds: [
+            {
+              id: "hold-1",
+              slot: {
+                serviceId: "consultation",
+                start: "2026-07-10T09:30:00.000Z",
+                end: "2026-07-10T10:00:00.000Z"
+              },
+              expiresAt: "2026-07-18T10:00:00.000Z"
+            }
+          ]
+        };
+      }
+    };
+
+    const engine = await createBookingEngineFromRepository({
+      ...baseConfig,
+      now: "2026-07-18T09:00:00.000Z",
+      repository
+    });
+
+    expect(engine.getHolds()).toEqual([
+      {
+        id: "hold-1",
+        slot: {
+          serviceId: "consultation",
+          start: "2026-07-10T09:30:00.000Z",
+          end: "2026-07-10T10:00:00.000Z"
+        },
+        expiresAt: "2026-07-18T10:00:00.000Z"
+      }
+    ]);
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toEqual({
+      available: false,
+      reason: "conflict"
+    });
+  });
+
+  it("drops expired holds when creating an engine from a repository snapshot", async () => {
+    const repository = {
+      async getSnapshot() {
+        return {
+          bookings: [],
+          holds: [
+            {
+              id: "hold-1",
+              slot: {
+                serviceId: "consultation",
+                start: "2026-07-10T09:00:00.000Z",
+                end: "2026-07-10T09:30:00.000Z"
+              },
+              expiresAt: "2026-07-18T08:30:00.000Z"
+            }
+          ]
+        };
+      }
+    };
+
+    const engine = await createBookingEngineFromRepository({
+      ...baseConfig,
+      now: "2026-07-18T09:00:00.000Z",
+      repository
+    });
+
+    expect(engine.getHolds()).toEqual([]);
+    expect(
+      engine.getSlotAvailability({
+        serviceId: "consultation",
+        start: "2026-07-10T09:00:00.000Z",
+        end: "2026-07-10T09:30:00.000Z"
+      })
+    ).toEqual({ available: true });
   });
 });

@@ -93,6 +93,7 @@ const slots = engine.getAvailableSlots({
 - `engine.createBooking({ id, slot })`
 - `engine.confirmBooking({ id, slot })`
 - `engine.addBooking(booking)`
+- `createBookingEngineFromRepository({ ...config, repository })`
 
 ## Time Zone Model
 
@@ -144,6 +145,19 @@ const slots = engine.getAvailableSlots({
   `status: "duplicate"` with the original booking.
 - repeated `confirmBooking` calls with the same `id` and a different slot return
   `status: "unavailable"` with `reason: "duplicate-booking-id"`.
+
+## Repository Interface
+
+- `BookingRepositoryReader` defines `getSnapshot()`.
+- `BookingRepositoryWriter` defines:
+  - `saveBooking(booking)`
+  - `saveHold(hold)`
+  - `releaseHold(holdId)`
+- `BookingRepository` combines both contracts.
+- `createBookingEngineFromRepository({ ...config, repository })` hydrates a
+  pure booking engine from persisted bookings and holds.
+- repository writes are intentionally not hidden inside the core engine. The
+  engine computes decisions; your application coordinates storage.
 
 ## Availability Diagnostics
 
