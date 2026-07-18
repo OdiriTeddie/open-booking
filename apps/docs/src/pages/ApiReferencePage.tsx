@@ -1,5 +1,6 @@
 import { CodePanel } from "../components/CodePanel";
 import { ComparisonCard } from "../components/ComparisonCard";
+import { ReferenceGroup } from "../components/ReferenceGroup";
 import { SectionHeading } from "../components/SectionHeading";
 import { coreApiGroups, reactApiGroups } from "../data";
 
@@ -72,16 +73,7 @@ const confirmation = useBookingConfirmation({
           <SectionHeading eyebrow="Core" title="@openbooking/core" />
           <div className="reference-groups">
             {coreApiGroups.map((group) => (
-              <div className="reference-group" key={group.title}>
-                <h3>{group.title}</h3>
-                <ul className="reference-list">
-                  {group.items.map((item) => (
-                    <li key={item}>
-                      <code>{item}</code>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <ReferenceGroup items={group.items} key={group.title} title={group.title} />
             ))}
           </div>
           <CodePanel title="Core example">{coreExampleSnippet}</CodePanel>
@@ -91,16 +83,7 @@ const confirmation = useBookingConfirmation({
           <SectionHeading eyebrow="React" title="@openbooking/react" />
           <div className="reference-groups">
             {reactApiGroups.map((group) => (
-              <div className="reference-group" key={group.title}>
-                <h3>{group.title}</h3>
-                <ul className="reference-list">
-                  {group.items.map((item) => (
-                    <li key={item}>
-                      <code>{item}</code>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <ReferenceGroup items={group.items} key={group.title} title={group.title} />
             ))}
           </div>
           <CodePanel title="React example">{reactExampleSnippet}</CodePanel>

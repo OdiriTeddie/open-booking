@@ -11,6 +11,7 @@ import {
 } from "@openbooking/react";
 import { CodePanel } from "../components/CodePanel";
 import { ComparisonCard } from "../components/ComparisonCard";
+import { InspectorCard } from "../components/InspectorCard";
 import { SectionHeading } from "../components/SectionHeading";
 import { availability, bookings, diagnosticDates, services } from "../data";
 import { formatReasonLabel } from "../formatters";
@@ -181,24 +182,16 @@ const confirmation = await confirmBookingWithRetry({
             </button>
           </div>
           <div className="inspector-grid">
-            <div className="inspector-card">
-              <span>Weekday</span>
-              <strong>{availabilityForDate.weekday}</strong>
-            </div>
-            <div className="inspector-card">
-              <span>Windows</span>
-              <strong>
-                {availabilityForDate.windows.map((window) => `${window.start}-${window.end}`).join(", ")}
-              </strong>
-            </div>
-            <div className="inspector-card">
-              <span>First slot</span>
-              <strong>{booking.slots[0]?.start ?? "No slot"}</strong>
-            </div>
-            <div className="inspector-card">
-              <span>First blocked reason</span>
-              <strong>{unavailableSlots[0]?.reason ?? "None"}</strong>
-            </div>
+            <InspectorCard label="Weekday" value={availabilityForDate.weekday} />
+            <InspectorCard
+              label="Windows"
+              value={availabilityForDate.windows.map((window) => `${window.start}-${window.end}`).join(", ")}
+            />
+            <InspectorCard label="First slot" value={booking.slots[0]?.start ?? "No slot"} />
+            <InspectorCard
+              label="First blocked reason"
+              value={unavailableSlots[0]?.reason ?? "None"}
+            />
           </div>
           <div className="reason-list" aria-label="Blocked slot reasons">
             {Object.entries(blockedReasonCounts).length === 0 ? (

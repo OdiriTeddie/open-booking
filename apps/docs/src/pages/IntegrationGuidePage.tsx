@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CodePanel } from "../components/CodePanel";
+import { GuideCard } from "../components/GuideCard";
 import { SectionHeading } from "../components/SectionHeading";
 import { integrationGuides } from "../data";
 
@@ -39,18 +40,9 @@ export function IntegrationGuidePage() {
         </div>
         <div className="guide-layout">
           <div className="guide-copy">
-            <div className="guide-card">
-              <span>Framework</span>
-              <strong>{selectedGuide.title}</strong>
-            </div>
-            <div className="guide-card">
-              <span>Pattern</span>
-              <strong>Hold on client, confirm on server</strong>
-            </div>
-            <div className="guide-card guide-card-wide">
-              <span>Notes</span>
-              <strong>{selectedGuide.description}</strong>
-            </div>
+            <GuideCard label="Framework" value={selectedGuide.title} />
+            <GuideCard label="Pattern" value="Hold on client, confirm on server" />
+            <GuideCard label="Notes" value={selectedGuide.description} wide />
           </div>
           <CodePanel title={selectedGuide.title}>{selectedGuide.snippet}</CodePanel>
         </div>
