@@ -94,6 +94,7 @@ const slots = engine.getAvailableSlots({
 - `engine.confirmBooking({ id, slot })`
 - `engine.addBooking(booking)`
 - `createBookingEngineFromRepository({ ...config, repository })`
+- `loadBookingEngineFromRepository({ ...config, repository })`
 - `confirmBookingWithVersion({ ...config, repository, expectedVersion, bookingId, slot })`
 - `confirmBookingWithVersionUsingEngine({ engine, repository, expectedVersion, bookingId, slot })`
 - `createInMemoryRepository({ bookings?, holds?, initialVersion? })`
@@ -163,12 +164,14 @@ const slots = engine.getAvailableSlots({
   tests, examples, and local prototypes.
 - `createBookingEngineFromRepository({ ...config, repository })` hydrates a
   pure booking engine from persisted bookings and holds.
+- `loadBookingEngineFromRepository({ ...config, repository })` returns both
+  the hydrated engine and the snapshot that produced it.
 - repository writes are intentionally not hidden inside the core engine. The
   engine computes decisions; your application coordinates storage.
 
 ```ts
 import {
-  createBookingEngineFromRepository,
+  loadBookingEngineFromRepository,
   createInMemoryRepository
 } from "@openbooking/core";
 
@@ -178,7 +181,7 @@ const repository = createInMemoryRepository({
   initialVersion: 0
 });
 
-const engine = await createBookingEngineFromRepository({
+const { engine, snapshot } = await loadBookingEngineFromRepository({
   services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
   availability: {
     friday: [{ start: "09:00", end: "17:00" }]
@@ -207,7 +210,7 @@ const engine = await createBookingEngineFromRepository({
 ```ts
 import {
   confirmBookingWithVersionUsingEngine,
-  createBookingEngineFromRepository,
+  loadBookingEngineFromRepository,
   type BookingRepositoryVersion,
   type VersionedBookingRepository
 } from "@openbooking/core";
@@ -247,7 +250,7 @@ const repository: VersionedBookingRepository = {
   }
 };
 
-const engine = await createBookingEngineFromRepository({
+const { engine, snapshot } = await loadBookingEngineFromRepository({
   services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
   availability: {
     friday: [{ start: "09:00", end: "17:00" }]
@@ -255,8 +258,6 @@ const engine = await createBookingEngineFromRepository({
   repository,
   now: "2026-07-18T12:00:00.000Z"
 });
-
-const snapshot = await repository.getSnapshot();
 
 const confirmation = await confirmBookingWithVersionUsingEngine({
   engine,
@@ -302,7 +303,7 @@ Recommended server sequence:
 
 ```ts
 import {
-  createBookingEngineFromRepository,
+  loadBookingEngineFromRepository,
   createInMemoryRepository
 } from "@openbooking/core";
 
@@ -312,7 +313,7 @@ const repository = createInMemoryRepository({
   initialVersion: 0
 });
 
-const engine = await createBookingEngineFromRepository({
+const { engine } = await loadBookingEngineFromRepository({
   services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
   availability: {
     monday: [{ start: "09:00", end: "17:00" }]
@@ -367,11 +368,10 @@ if (holdResult.status === "held") {
 ```ts
 import {
   confirmBookingWithVersionUsingEngine,
-  createBookingEngineFromRepository
+  loadBookingEngineFromRepository
 } from "@openbooking/core";
 
-const snapshot = await repository.getSnapshot();
-const engine = await createBookingEngineFromRepository({
+const { engine, snapshot } = await loadBookingEngineFromRepository({
   services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
   availability: {
     monday: [{ start: "09:00", end: "17:00" }]
@@ -401,7 +401,7 @@ if (confirmation.status === "confirmed") {
 ### Retry On Version Mismatch
 
 ```ts
-const firstEngine = await createBookingEngineFromRepository({
+const { engine: firstEngine } = await loadBookingEngineFromRepository({
   services,
   availability,
   repository,
@@ -417,8 +417,7 @@ const firstAttempt = await confirmBookingWithVersionUsingEngine({
 });
 
 if (firstAttempt.status === "unavailable" && firstAttempt.reason === "version-mismatch") {
-  const freshSnapshot = await repository.getSnapshot();
-  const freshEngine = await createBookingEngineFromRepository({
+  const { engine: freshEngine, snapshot: freshSnapshot } = await loadBookingEngineFromRepository({
     services,
     availability,
     repository,

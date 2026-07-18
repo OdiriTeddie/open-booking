@@ -4,7 +4,8 @@ import {
   confirmBookingWithVersionUsingEngine,
   createInMemoryRepository,
   createBookingEngine,
-  createBookingEngineFromRepository
+  createBookingEngineFromRepository,
+  loadBookingEngineFromRepository
 } from "../src";
 
 const baseConfig = {
@@ -1361,6 +1362,58 @@ describe("createBookingEngine", () => {
     ).toEqual({ available: true });
   });
 
+  it("loads an engine and snapshot together from a versioned repository", async () => {
+    const repository = createInMemoryRepository({
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-24T09:00:00.000Z",
+          end: "2026-07-24T09:30:00.000Z"
+        }
+      ],
+      holds: [
+        {
+          id: "hold-1",
+          slot: {
+            serviceId: "consultation",
+            start: "2026-07-24T09:30:00.000Z",
+            end: "2026-07-24T10:00:00.000Z"
+          },
+          expiresAt: "2026-07-18T10:00:00.000Z"
+        }
+      ],
+      initialVersion: 9
+    });
+
+    const context = await loadBookingEngineFromRepository({
+      ...baseConfig,
+      repository,
+      now: "2026-07-18T09:00:00.000Z"
+    });
+
+    expect(context.snapshot.version).toBe(9);
+    expect(context.snapshot.bookings).toEqual([
+      {
+        id: "booking-1",
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      }
+    ]);
+    expect(context.engine.getHolds()).toEqual([
+      {
+        id: "hold-1",
+        slot: {
+          serviceId: "consultation",
+          start: "2026-07-24T09:30:00.000Z",
+          end: "2026-07-24T10:00:00.000Z"
+        },
+        expiresAt: "2026-07-18T10:00:00.000Z"
+      }
+    ]);
+  });
+
   it("confirms a booking against a versioned repository snapshot", async () => {
     const repository = {
       async getSnapshot() {
@@ -1448,8 +1501,7 @@ describe("createBookingEngine", () => {
     const repository = createInMemoryRepository({
       initialVersion: 4
     });
-    const snapshot = await repository.getSnapshot();
-    const engine = await createBookingEngineFromRepository({
+    const { engine, snapshot } = await loadBookingEngineFromRepository({
       ...baseConfig,
       repository,
       now: "2026-07-18T09:00:00.000Z"
@@ -1483,7 +1535,7 @@ describe("createBookingEngine", () => {
     const repository = createInMemoryRepository({
       initialVersion: 5
     });
-    const engine = await createBookingEngineFromRepository({
+    const { engine } = await loadBookingEngineFromRepository({
       ...baseConfig,
       repository,
       now: "2026-07-18T09:00:00.000Z"

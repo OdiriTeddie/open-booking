@@ -176,6 +176,14 @@ export interface CreateBookingEngineFromRepositoryInput
   repository: BookingRepositoryReader;
 }
 
+/** Loaded repository context that bundles a hydrated engine with the source snapshot. */
+export interface BookingEngineRepositoryContext<
+  TSnapshot extends BookingRepositorySnapshot = BookingRepositorySnapshot
+> {
+  engine: BookingEngine;
+  snapshot: TSnapshot;
+}
+
 /** Input for optimistic-concurrency confirmation against versioned storage. */
 export interface ConfirmBookingWithVersionInput
   extends Omit<BookingEngineConfig, "bookings" | "holds"> {
@@ -902,13 +910,20 @@ export function createInMemoryRepository(
   };
 }
 
-/** Loads persisted bookings and holds from a repository and returns a pure booking engine. */
-export async function createBookingEngineFromRepository(
-  input: CreateBookingEngineFromRepositoryInput
-): Promise<BookingEngine> {
-  const snapshot = await input.repository.getSnapshot();
-
-  return createBookingEngine({
+/**
+ * Loads persisted bookings and holds from a repository and returns both the
+ * hydrated engine and the snapshot that produced it.
+ */
+export async function loadBookingEngineFromRepository<
+  TRepository extends BookingRepositoryReader,
+  TSnapshot extends Awaited<ReturnType<TRepository["getSnapshot"]>>
+>(
+  input: Omit<CreateBookingEngineFromRepositoryInput, "repository"> & {
+    repository: TRepository;
+  }
+): Promise<BookingEngineRepositoryContext<TSnapshot>> {
+  const snapshot = (await input.repository.getSnapshot()) as TSnapshot;
+  const engine = createBookingEngine({
     services: input.services,
     availability: input.availability,
     bookings: snapshot.bookings,
@@ -925,6 +940,20 @@ export async function createBookingEngineFromRepository(
     slotIntervalMinutes: input.slotIntervalMinutes,
     timeZone: input.timeZone
   });
+
+  return {
+    engine,
+    snapshot
+  };
+}
+
+/** Loads persisted bookings and holds from a repository and returns a pure booking engine. */
+export async function createBookingEngineFromRepository(
+  input: CreateBookingEngineFromRepositoryInput
+): Promise<BookingEngine> {
+  const context = await loadBookingEngineFromRepository(input);
+
+  return context.engine;
 }
 
 /**
