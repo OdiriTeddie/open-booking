@@ -95,6 +95,7 @@ const slots = engine.getAvailableSlots({
 - `engine.addBooking(booking)`
 - `createBookingEngineFromRepository({ ...config, repository })`
 - `confirmBookingWithVersion({ ...config, repository, expectedVersion, bookingId, slot })`
+- `confirmBookingWithVersionUsingEngine({ engine, repository, expectedVersion, bookingId, slot })`
 - `createInMemoryRepository({ bookings?, holds?, initialVersion? })`
 
 ## Time Zone Model
@@ -196,6 +197,8 @@ const engine = await createBookingEngineFromRepository({
   - loads a versioned snapshot from storage
   - validates the booking or held booking against that snapshot
   - attempts an optimistic-concurrency commit with `expectedVersion`
+- `confirmBookingWithVersionUsingEngine(...)` reuses an already-hydrated engine
+  and commits against the expected version without repeating scheduling config.
 - if the stored version has changed, the result is
   `status: "unavailable"` with `reason: "version-mismatch"`.
 
@@ -203,7 +206,7 @@ const engine = await createBookingEngineFromRepository({
 
 ```ts
 import {
-  confirmBookingWithVersion,
+  confirmBookingWithVersionUsingEngine,
   createBookingEngineFromRepository,
   type BookingRepositoryVersion,
   type VersionedBookingRepository
@@ -253,21 +256,19 @@ const engine = await createBookingEngineFromRepository({
   now: "2026-07-18T12:00:00.000Z"
 });
 
-const confirmation = await confirmBookingWithVersion({
-  services: engine.getServices(),
-  availability: {
-    friday: [{ start: "09:00", end: "17:00" }]
-  },
+const snapshot = await repository.getSnapshot();
+
+const confirmation = await confirmBookingWithVersionUsingEngine({
+  engine,
   repository,
-  expectedVersion: 12,
+  expectedVersion: snapshot.version,
   holdId: "hold-1",
   bookingId: "booking-42",
   slot: {
     serviceId: "consultation",
     start: "2026-07-24T09:00:00.000Z",
     end: "2026-07-24T09:30:00.000Z"
-  },
-  now: "2026-07-18T12:00:00.000Z"
+  }
 });
 
 if (confirmation.status === "confirmed") {
@@ -291,7 +292,7 @@ Recommended server sequence:
 
 1. Create or load a hold for the requested slot.
 2. Read a versioned snapshot from storage.
-3. Call `confirmBookingWithVersion(...)` with the repository version.
+3. Call `confirmBookingWithVersionUsingEngine(...)` with the repository version.
 4. On `version-mismatch`, reload and retry with fresh availability data.
 5. On success, persist the booking and release the hold in the same repository commit.
 
@@ -364,15 +365,23 @@ if (holdResult.status === "held") {
 ### Confirm A Held Booking With Optimistic Concurrency
 
 ```ts
-import { confirmBookingWithVersion } from "@openbooking/core";
+import {
+  confirmBookingWithVersionUsingEngine,
+  createBookingEngineFromRepository
+} from "@openbooking/core";
 
 const snapshot = await repository.getSnapshot();
-
-const confirmation = await confirmBookingWithVersion({
+const engine = await createBookingEngineFromRepository({
   services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
   availability: {
     monday: [{ start: "09:00", end: "17:00" }]
   },
+  repository,
+  now: "2026-07-18T12:05:00.000Z"
+});
+
+const confirmation = await confirmBookingWithVersionUsingEngine({
+  engine,
   repository,
   expectedVersion: snapshot.version,
   holdId: "hold-42",
@@ -381,8 +390,7 @@ const confirmation = await confirmBookingWithVersion({
     serviceId: "consultation",
     start: "2026-07-20T09:00:00.000Z",
     end: "2026-07-20T09:30:00.000Z"
-  },
-  now: "2026-07-18T12:05:00.000Z"
+  }
 });
 
 if (confirmation.status === "confirmed") {
@@ -393,27 +401,36 @@ if (confirmation.status === "confirmed") {
 ### Retry On Version Mismatch
 
 ```ts
-const firstAttempt = await confirmBookingWithVersion({
+const firstEngine = await createBookingEngineFromRepository({
   services,
   availability,
   repository,
+  now: "2026-07-18T12:05:00.000Z"
+});
+
+const firstAttempt = await confirmBookingWithVersionUsingEngine({
+  engine: firstEngine,
+  repository,
   expectedVersion: staleVersion,
   bookingId: "booking-42",
-  slot,
-  now: "2026-07-18T12:05:00.000Z"
+  slot
 });
 
 if (firstAttempt.status === "unavailable" && firstAttempt.reason === "version-mismatch") {
   const freshSnapshot = await repository.getSnapshot();
-
-  return confirmBookingWithVersion({
+  const freshEngine = await createBookingEngineFromRepository({
     services,
     availability,
     repository,
+    now: "2026-07-18T12:05:00.000Z"
+  });
+
+  return confirmBookingWithVersionUsingEngine({
+    engine: freshEngine,
+    repository,
     expectedVersion: freshSnapshot.version,
     bookingId: "booking-42",
-    slot,
-    now: "2026-07-18T12:05:00.000Z"
+    slot
   });
 }
 ```

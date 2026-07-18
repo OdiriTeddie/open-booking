@@ -186,6 +186,16 @@ export interface ConfirmBookingWithVersionInput
   holdId?: string;
 }
 
+/** Input for optimistic-concurrency confirmation using a pre-hydrated engine. */
+export interface ConfirmBookingWithVersionUsingEngineInput {
+  engine: BookingEngine;
+  repository: VersionedBookingRepository;
+  expectedVersion: BookingRepositoryVersion;
+  bookingId: string;
+  slot: BookingSlot;
+  holdId?: string;
+}
+
 /** Seed data for the built-in in-memory repository helper. */
 export interface InMemoryBookingRepositoryInput {
   bookings?: readonly Booking[];
@@ -945,12 +955,31 @@ export async function confirmBookingWithVersion(
     timeZone: input.timeZone
   });
 
+  return confirmBookingWithVersionUsingEngine({
+    engine,
+    repository: input.repository,
+    expectedVersion: input.expectedVersion,
+    bookingId: input.bookingId,
+    slot: input.slot,
+    holdId: input.holdId
+  });
+}
+
+/**
+ * Confirms a booking against a versioned repository using an already-hydrated engine.
+ *
+ * This keeps server-side confirmation flows from repeating scheduling config
+ * after the latest snapshot has already been loaded into an engine instance.
+ */
+export async function confirmBookingWithVersionUsingEngine(
+  input: ConfirmBookingWithVersionUsingEngineInput
+): Promise<BookingConfirmationResult> {
   const confirmation = input.holdId
-    ? engine.confirmHeldBooking({
+    ? input.engine.confirmHeldBooking({
         holdId: input.holdId,
         bookingId: input.bookingId
       })
-    : engine.confirmBooking({
+    : input.engine.confirmBooking({
         id: input.bookingId,
         slot: input.slot
       });
@@ -968,7 +997,7 @@ export async function confirmBookingWithVersion(
   if (commitResult.status === "version-mismatch") {
     return {
       status: "unavailable",
-      engine,
+      engine: input.engine,
       reason: "version-mismatch"
     };
   }
@@ -976,7 +1005,7 @@ export async function confirmBookingWithVersion(
   if (commitResult.status === "duplicate-booking-id") {
     return {
       status: "unavailable",
-      engine,
+      engine: input.engine,
       reason: "duplicate-booking-id"
     };
   }

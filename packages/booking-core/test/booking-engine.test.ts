@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   confirmBookingWithVersion,
+  confirmBookingWithVersionUsingEngine,
   createInMemoryRepository,
   createBookingEngine,
   createBookingEngineFromRepository
@@ -1439,6 +1440,70 @@ describe("createBookingEngine", () => {
     expect(result).toEqual({
       status: "unavailable",
       engine: expect.any(Object),
+      reason: "version-mismatch"
+    });
+  });
+
+  it("confirms a booking with versioning using a pre-hydrated engine", async () => {
+    const repository = createInMemoryRepository({
+      initialVersion: 4
+    });
+    const snapshot = await repository.getSnapshot();
+    const engine = await createBookingEngineFromRepository({
+      ...baseConfig,
+      repository,
+      now: "2026-07-18T09:00:00.000Z"
+    });
+
+    const result = await confirmBookingWithVersionUsingEngine({
+      engine,
+      repository,
+      expectedVersion: snapshot.version,
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      }
+    });
+
+    expect(result.status).toBe("confirmed");
+    if (result.status !== "confirmed") {
+      throw new Error("Expected confirmed versioned engine confirmation result.");
+    }
+    expect(result.resource).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-24T09:00:00.000Z",
+      end: "2026-07-24T09:30:00.000Z"
+    });
+  });
+
+  it("returns version-mismatch when engine-based versioned confirmation uses a stale version", async () => {
+    const repository = createInMemoryRepository({
+      initialVersion: 5
+    });
+    const engine = await createBookingEngineFromRepository({
+      ...baseConfig,
+      repository,
+      now: "2026-07-18T09:00:00.000Z"
+    });
+
+    const result = await confirmBookingWithVersionUsingEngine({
+      engine,
+      repository,
+      expectedVersion: 4,
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      }
+    });
+
+    expect(result).toEqual({
+      status: "unavailable",
+      engine,
       reason: "version-mismatch"
     });
   });
