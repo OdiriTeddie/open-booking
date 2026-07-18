@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   confirmBookingWithVersion,
+  createInMemoryRepository,
   createBookingEngine,
   createBookingEngineFromRepository
 } from "../src";
@@ -1368,6 +1369,9 @@ describe("createBookingEngine", () => {
           holds: []
         };
       },
+      async saveBooking() {},
+      async saveHold() {},
+      async releaseHold() {},
       async commitBookingChange() {
         return {
           status: "committed" as const
@@ -1409,6 +1413,9 @@ describe("createBookingEngine", () => {
           holds: []
         };
       },
+      async saveBooking() {},
+      async saveHold() {},
+      async releaseHold() {},
       async commitBookingChange() {
         return {
           status: "version-mismatch" as const
@@ -1434,5 +1441,109 @@ describe("createBookingEngine", () => {
       engine: expect.any(Object),
       reason: "version-mismatch"
     });
+  });
+
+  it("creates an in-memory repository with versioned snapshots", async () => {
+    const repository = createInMemoryRepository({
+      bookings: [
+        {
+          id: "booking-1",
+          serviceId: "consultation",
+          start: "2026-07-24T09:00:00.000Z",
+          end: "2026-07-24T09:30:00.000Z"
+        }
+      ],
+      initialVersion: 3
+    });
+
+    await repository.saveHold({
+      id: "hold-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:30:00.000Z",
+        end: "2026-07-24T10:00:00.000Z"
+      },
+      expiresAt: "2026-07-18T10:00:00.000Z"
+    });
+
+    const snapshot = await repository.getSnapshot();
+
+    expect(snapshot.version).toBe(4);
+    expect(snapshot.bookings).toEqual([
+      {
+        id: "booking-1",
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      }
+    ]);
+    expect(snapshot.holds).toEqual([
+      {
+        id: "hold-1",
+        slot: {
+          serviceId: "consultation",
+          start: "2026-07-24T09:30:00.000Z",
+          end: "2026-07-24T10:00:00.000Z"
+        },
+        expiresAt: "2026-07-18T10:00:00.000Z"
+      }
+    ]);
+  });
+
+  it("supports versioned confirmation with the in-memory repository helper", async () => {
+    const repository = createInMemoryRepository({
+      holds: [
+        {
+          id: "hold-1",
+          slot: {
+            serviceId: "consultation",
+            start: "2026-07-24T09:00:00.000Z",
+            end: "2026-07-24T09:30:00.000Z"
+          },
+          expiresAt: "2026-07-18T12:10:00.000Z"
+        }
+      ],
+      initialVersion: 2
+    });
+
+    const snapshot = await repository.getSnapshot();
+
+    const result = await confirmBookingWithVersion({
+      ...baseConfig,
+      repository,
+      expectedVersion: snapshot.version,
+      holdId: "hold-1",
+      bookingId: "booking-1",
+      slot: {
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      },
+      now: "2026-07-18T12:00:00.000Z"
+    });
+
+    expect(result.status).toBe("confirmed");
+    if (result.status !== "confirmed") {
+      throw new Error("Expected confirmed in-memory repository result.");
+    }
+    expect(result.resource).toEqual({
+      id: "booking-1",
+      serviceId: "consultation",
+      start: "2026-07-24T09:00:00.000Z",
+      end: "2026-07-24T09:30:00.000Z"
+    });
+
+    const nextSnapshot = await repository.getSnapshot();
+
+    expect(nextSnapshot.version).toBe(3);
+    expect(nextSnapshot.bookings).toEqual([
+      {
+        id: "booking-1",
+        serviceId: "consultation",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:30:00.000Z"
+      }
+    ]);
+    expect(nextSnapshot.holds).toEqual([]);
   });
 });

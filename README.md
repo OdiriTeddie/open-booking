@@ -40,7 +40,7 @@ const engine = createBookingEngine({
 
 const slots = engine.getAvailableSlots({
   serviceId: "consultation",
-  date: "2026-07-13"
+  date: "2026-07-20"
 });
 ```
 
@@ -52,11 +52,11 @@ Vue, browser, DOM, or UI dependencies.
 ```ts
 const services = engine.getServices();
 
-const availability = engine.getAvailabilityForDate("2026-07-13");
+const availability = engine.getAvailabilityForDate("2026-07-20");
 
 const slots = engine.getAvailableSlots({
   serviceId: "consultation",
-  date: "2026-07-13"
+  date: "2026-07-20"
 });
 
 const isAvailable = engine.isSlotAvailable(slots[0]);

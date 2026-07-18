@@ -167,6 +167,7 @@ export interface VersionedBookingRepositoryWriter {
 /** Combined read/write versioned repository contract. */
 export interface VersionedBookingRepository
   extends VersionedBookingRepositoryReader,
+    BookingRepositoryWriter,
     VersionedBookingRepositoryWriter {}
 
 /** Input for hydrating a pure booking engine from persisted repository state. */
@@ -183,6 +184,13 @@ export interface ConfirmBookingWithVersionInput
   bookingId: string;
   slot: BookingSlot;
   holdId?: string;
+}
+
+/** Seed data for the built-in in-memory repository helper. */
+export interface InMemoryBookingRepositoryInput {
+  bookings?: readonly Booking[];
+  holds?: readonly BookingHold[];
+  initialVersion?: BookingRepositoryVersion;
 }
 
 /** Input for listing generated slots for a service on a local date. */
@@ -830,6 +838,60 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   };
 }
 
+/**
+ * Creates a mutable in-memory repository that implements the versioned storage contracts.
+ *
+ * This helper is intended for tests, examples, demos, and lightweight backend prototypes.
+ */
+export function createInMemoryRepository(
+  input: InMemoryBookingRepositoryInput = {}
+): VersionedBookingRepository {
+  let bookings = [...(input.bookings ?? [])];
+  let holds = [...(input.holds ?? [])];
+  let version = input.initialVersion ?? 0;
+
+  return {
+    async getSnapshot() {
+      return {
+        version,
+        bookings: [...bookings],
+        holds: [...holds]
+      };
+    },
+    async saveBooking(booking: Booking) {
+      bookings = [...bookings, booking];
+      version = incrementRepositoryVersion(version);
+    },
+    async saveHold(hold: BookingHold) {
+      holds = [...holds.filter((item) => item.id !== hold.id), hold];
+      version = incrementRepositoryVersion(version);
+    },
+    async releaseHold(holdId: string) {
+      holds = holds.filter((hold) => hold.id !== holdId);
+      version = incrementRepositoryVersion(version);
+    },
+    async commitBookingChange(commitInput) {
+      if (commitInput.expectedVersion !== version) {
+        return { status: "version-mismatch" as const };
+      }
+
+      if (bookings.some((booking) => booking.id === commitInput.booking.id)) {
+        return { status: "duplicate-booking-id" as const };
+      }
+
+      bookings = [...bookings, commitInput.booking];
+
+      if (commitInput.releaseHoldId) {
+        holds = holds.filter((hold) => hold.id !== commitInput.releaseHoldId);
+      }
+
+      version = incrementRepositoryVersion(version);
+
+      return { status: "committed" as const };
+    }
+  };
+}
+
 /** Loads persisted bookings and holds from a repository and returns a pure booking engine. */
 export async function createBookingEngineFromRepository(
   input: CreateBookingEngineFromRepositoryInput
@@ -1445,4 +1507,18 @@ function formatLocalDateTime(localDateTime: {
   minutes: number;
 }): string {
   return `${String(localDateTime.year).padStart(4, "0")}-${String(localDateTime.month).padStart(2, "0")}-${String(localDateTime.day).padStart(2, "0")}T${String(localDateTime.hours).padStart(2, "0")}:${String(localDateTime.minutes).padStart(2, "0")}`;
+}
+
+function incrementRepositoryVersion(version: BookingRepositoryVersion): BookingRepositoryVersion {
+  if (typeof version === "number") {
+    return version + 1;
+  }
+
+  const numericVersion = Number(version);
+
+  if (Number.isFinite(numericVersion)) {
+    return String(numericVersion + 1);
+  }
+
+  return `${version}:next`;
 }

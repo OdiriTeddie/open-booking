@@ -42,7 +42,7 @@ const engine = createBookingEngine({
   },
   dateOverrides: [
     {
-      date: "2026-07-14",
+      date: "2026-07-21",
       windows: [{ start: "12:00", end: "16:00" }]
     }
   ],
@@ -75,7 +75,7 @@ const engine = createBookingEngine({
 
 const slots = engine.getAvailableSlots({
   serviceId: "consultation",
-  date: "2026-07-13"
+  date: "2026-07-20"
 });
 ```
 
@@ -95,6 +95,7 @@ const slots = engine.getAvailableSlots({
 - `engine.addBooking(booking)`
 - `createBookingEngineFromRepository({ ...config, repository })`
 - `confirmBookingWithVersion({ ...config, repository, expectedVersion, bookingId, slot })`
+- `createInMemoryRepository({ bookings?, holds?, initialVersion? })`
 
 ## Time Zone Model
 
@@ -157,10 +158,34 @@ const slots = engine.getAvailableSlots({
   - `saveHold(hold)`
   - `releaseHold(holdId)`
 - `BookingRepository` combines both contracts.
+- `createInMemoryRepository(...)` returns a mutable versioned repository for
+  tests, examples, and local prototypes.
 - `createBookingEngineFromRepository({ ...config, repository })` hydrates a
   pure booking engine from persisted bookings and holds.
 - repository writes are intentionally not hidden inside the core engine. The
   engine computes decisions; your application coordinates storage.
+
+```ts
+import {
+  createBookingEngineFromRepository,
+  createInMemoryRepository
+} from "@openbooking/core";
+
+const repository = createInMemoryRepository({
+  bookings: [],
+  holds: [],
+  initialVersion: 0
+});
+
+const engine = await createBookingEngineFromRepository({
+  services: [{ id: "consultation", name: "Consultation", durationMinutes: 30 }],
+  availability: {
+    friday: [{ start: "09:00", end: "17:00" }]
+  },
+  repository,
+  now: "2026-07-18T12:00:00.000Z"
+});
+```
 
 ## Versioned Confirmation
 
