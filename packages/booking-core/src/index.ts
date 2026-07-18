@@ -1,3 +1,4 @@
+/** Days of the week used by weekly availability and recurrence rules. */
 export type Weekday =
   | "sunday"
   | "monday"
@@ -7,28 +8,36 @@ export type Weekday =
   | "friday"
   | "saturday";
 
+/** Calendar date in `YYYY-MM-DD` format, interpreted in the configured business time zone. */
 export type LocalDate = `${number}-${number}-${number}`;
+/** Wall-clock time in `HH:mm` format. */
 export type LocalTime = `${number}:${number}`;
+/** ISO date-time string with `Z` or an explicit numeric offset. */
 export type IsoDateTime = string;
 
+/** A bookable service and its required duration. */
 export interface Service {
   id: string;
   name: string;
   durationMinutes: number;
 }
 
+/** A start/end availability range inside a single business day. */
 export interface AvailabilityWindow {
   start: LocalTime;
   end: LocalTime;
 }
 
+/** Base weekly business availability keyed by weekday. */
 export type WeeklyAvailability = Partial<Record<Weekday, readonly AvailabilityWindow[]>>;
 
+/** Date-specific availability that replaces the normal weekly schedule for that date. */
 export interface DateAvailabilityOverride {
   date: LocalDate;
   windows: readonly AvailabilityWindow[];
 }
 
+/** Weekly recurring rule that adds extra availability windows on matching dates. */
 export interface RecurringAvailabilityRule {
   frequency: "weekly";
   weekdays: readonly Weekday[];
@@ -37,6 +46,7 @@ export interface RecurringAvailabilityRule {
   endDate?: LocalDate;
 }
 
+/** Weekly recurring rule that suppresses availability on matching dates. */
 export interface RecurringBlackoutRule {
   frequency: "weekly";
   weekdays: readonly Weekday[];
@@ -44,6 +54,7 @@ export interface RecurringBlackoutRule {
   endDate?: LocalDate;
 }
 
+/** A confirmed booking stored by the system. */
 export interface Booking {
   id: string;
   serviceId: string;
@@ -51,23 +62,27 @@ export interface Booking {
   end: IsoDateTime;
 }
 
+/** A temporary reservation that blocks a slot until it expires or is confirmed. */
 export interface BookingHold {
   id: string;
   slot: BookingSlot;
   expiresAt: IsoDateTime;
 }
 
+/** A generated slot for a service with explicit start and end timestamps. */
 export interface BookingSlot {
   serviceId: string;
   start: IsoDateTime;
   end: IsoDateTime;
 }
 
+/** Capacity-style rules applied after base availability and conflict checks. */
 export interface BookingRules {
   maxBookingsPerDay?: number;
   maxBookingsPerServicePerDay?: number;
 }
 
+/** Resolved availability metadata for a single local business date. */
 export interface DateAvailability {
   date: LocalDate;
   weekday: Weekday;
@@ -79,6 +94,7 @@ export interface DateAvailability {
   timeZone: string;
 }
 
+/** Full engine configuration for in-memory scheduling decisions. */
 export interface BookingEngineConfig {
   services: readonly Service[];
   availability: WeeklyAvailability;
@@ -97,56 +113,69 @@ export interface BookingEngineConfig {
   timeZone?: string;
 }
 
+/** Persisted bookings and holds loaded from storage. */
 export interface BookingRepositorySnapshot {
   bookings: readonly Booking[];
   holds: readonly BookingHold[];
 }
 
+/** Opaque optimistic-concurrency version returned by storage. */
 export type BookingRepositoryVersion = string | number;
 
+/** Repository snapshot that includes a storage version for optimistic concurrency. */
 export interface VersionedBookingRepositorySnapshot extends BookingRepositorySnapshot {
   version: BookingRepositoryVersion;
 }
 
+/** Read-only storage contract for loading persisted bookings and holds. */
 export interface BookingRepositoryReader {
   getSnapshot(): Promise<BookingRepositorySnapshot>;
 }
 
+/** Write-side storage contract for applications that persist bookings and holds. */
 export interface BookingRepositoryWriter {
   saveBooking(booking: Booking): Promise<void>;
   saveHold(hold: BookingHold): Promise<void>;
   releaseHold(holdId: string): Promise<void>;
 }
 
+/** Combined read/write storage contract for booking persistence. */
 export interface BookingRepository extends BookingRepositoryReader, BookingRepositoryWriter {}
 
+/** Read-only versioned repository contract used by optimistic-concurrency flows. */
 export interface VersionedBookingRepositoryReader {
   getSnapshot(): Promise<VersionedBookingRepositorySnapshot>;
 }
 
+/** Commit payload for persisting a confirmed booking against an expected repository version. */
 export interface CommitBookingChangeInput {
   expectedVersion: BookingRepositoryVersion;
   booking: Booking;
   releaseHoldId?: string;
 }
 
+/** Storage commit result for versioned booking confirmation. */
 export interface CommitBookingChangeResult {
   status: "committed" | "version-mismatch" | "duplicate-booking-id";
 }
 
+/** Write-side versioned repository contract for optimistic-concurrency booking commits. */
 export interface VersionedBookingRepositoryWriter {
   commitBookingChange(input: CommitBookingChangeInput): Promise<CommitBookingChangeResult>;
 }
 
+/** Combined read/write versioned repository contract. */
 export interface VersionedBookingRepository
   extends VersionedBookingRepositoryReader,
     VersionedBookingRepositoryWriter {}
 
+/** Input for hydrating a pure booking engine from persisted repository state. */
 export interface CreateBookingEngineFromRepositoryInput
   extends Omit<BookingEngineConfig, "bookings" | "holds"> {
   repository: BookingRepositoryReader;
 }
 
+/** Input for optimistic-concurrency confirmation against versioned storage. */
 export interface ConfirmBookingWithVersionInput
   extends Omit<BookingEngineConfig, "bookings" | "holds"> {
   repository: VersionedBookingRepository;
@@ -156,29 +185,35 @@ export interface ConfirmBookingWithVersionInput
   holdId?: string;
 }
 
+/** Input for listing generated slots for a service on a local date. */
 export interface GetAvailableSlotsInput {
   serviceId: string;
   date: LocalDate;
 }
 
+/** Input for creating or confirming a booking from a slot. */
 export interface CreateBookingInput {
   id: string;
   slot: BookingSlot;
 }
 
+/** Alias for direct booking confirmation input. */
 export type ConfirmBookingInput = CreateBookingInput;
 
+/** Input for creating a temporary hold on a slot. */
 export interface CreateBookingHoldInput {
   id: string;
   slot: BookingSlot;
   expiresAt: IsoDateTime;
 }
 
+/** Input for confirming a booking from an existing hold. */
 export interface ConfirmHeldBookingInput {
   holdId: string;
   bookingId: string;
 }
 
+/** Slot-level reason codes returned by availability diagnostics. */
 export type BookingUnavailabilityReason =
   | "unknown-service"
   | "invalid-slot-duration"
@@ -190,16 +225,19 @@ export type BookingUnavailabilityReason =
   | "max-bookings-per-day"
   | "max-bookings-per-service-per-day";
 
+/** Availability decision for a single slot. */
 export interface SlotAvailabilityResult {
   available: boolean;
   reason?: BookingUnavailabilityReason;
 }
 
+/** Generated slot enriched with availability diagnostics. */
 export interface DiagnosedBookingSlot extends BookingSlot {
   available: boolean;
   reason?: BookingUnavailabilityReason;
 }
 
+/** Booking workflow failure reasons used by hold and confirmation flows. */
 export type BookingFailureReason =
   | "slot-unavailable"
   | "duplicate-booking-id"
@@ -207,55 +245,77 @@ export type BookingFailureReason =
   | "hold-expired"
   | "version-mismatch";
 
+/** Successful booking decision carrying a confirmed resource. */
 export interface BookingDecisionConfirmed<TResource> {
   status: "confirmed";
   resource: TResource;
   engine: BookingEngine;
 }
 
+/** Successful hold decision carrying a held resource. */
 export interface BookingDecisionHeld<TResource> {
   status: "held";
   resource: TResource;
   engine: BookingEngine;
 }
 
+/** Idempotent outcome carrying the existing persisted resource. */
 export interface BookingDecisionDuplicate<TResource> {
   status: "duplicate";
   resource: TResource;
   engine: BookingEngine;
 }
 
+/** Unsuccessful booking decision carrying a normalized failure reason. */
 export interface BookingDecisionUnavailable {
   status: "unavailable";
   reason: BookingFailureReason;
   engine: BookingEngine;
 }
 
+/** Normalized result for direct, held, and versioned booking confirmation flows. */
 export type BookingConfirmationResult =
   | BookingDecisionConfirmed<Booking>
   | BookingDecisionDuplicate<Booking>
   | BookingDecisionUnavailable;
 
+/** Normalized result for hold creation flows. */
 export type BookingHoldResult =
   | BookingDecisionHeld<BookingHold>
   | BookingDecisionDuplicate<BookingHold>
   | BookingDecisionUnavailable;
 
+/** Headless scheduling engine API exposed by `@openbooking/core`. */
 export interface BookingEngine {
+  /** Returns the configured services. */
   getServices(): readonly Service[];
+  /** Returns only the slots that are currently bookable for the given service and date. */
   getAvailableSlots(input: GetAvailableSlotsInput): BookingSlot[];
+  /** Returns all generated slots for the date plus availability diagnostics for each slot. */
   getSlotsWithAvailability(input: GetAvailableSlotsInput): DiagnosedBookingSlot[];
+  /** Returns all active, non-expired holds currently loaded into the engine. */
   getHolds(): readonly BookingHold[];
+  /** Returns whether the slot overlaps an existing confirmed booking, including buffer time. */
   hasConflict(slot: BookingSlot): boolean;
+  /** Returns whether the slot is currently bookable. */
   isSlotAvailable(slot: BookingSlot): boolean;
+  /** Returns a normalized availability decision for a single slot. */
   getSlotAvailability(slot: BookingSlot): SlotAvailabilityResult;
+  /** Returns resolved availability metadata for a local business date. */
   getAvailabilityForDate(date: LocalDate): DateAvailability;
+  /** Looks up a configured service by id. */
   getService(serviceId: string): Service | undefined;
+  /** Validates a slot and returns a booking shape without mutating persistence. */
   createBooking(input: CreateBookingInput): Booking;
+  /** Attempts to create a temporary hold for a slot. */
   createHold(input: CreateBookingHoldInput): BookingHoldResult;
+  /** Confirms a booking directly against the in-memory engine state. */
   confirmBooking(input: ConfirmBookingInput): BookingConfirmationResult;
+  /** Confirms a booking from an existing hold loaded into the engine. */
   confirmHeldBooking(input: ConfirmHeldBookingInput): BookingConfirmationResult;
+  /** Returns a new engine instance with the booking added to in-memory state. */
   addBooking(booking: Booking): BookingEngine;
+  /** Returns a new engine instance with the hold added to in-memory state. */
   addHold(hold: BookingHold): BookingEngine;
 }
 
@@ -269,6 +329,7 @@ const weekdays: Weekday[] = [
   "saturday"
 ];
 
+/** Creates a pure in-memory booking engine from the supplied scheduling configuration. */
 export function createBookingEngine(config: BookingEngineConfig): BookingEngine {
   validateConfig(config);
 
@@ -769,6 +830,7 @@ export function createBookingEngine(config: BookingEngineConfig): BookingEngine 
   };
 }
 
+/** Loads persisted bookings and holds from a repository and returns a pure booking engine. */
 export async function createBookingEngineFromRepository(
   input: CreateBookingEngineFromRepositoryInput
 ): Promise<BookingEngine> {
@@ -793,6 +855,12 @@ export async function createBookingEngineFromRepository(
   });
 }
 
+/**
+ * Confirms a booking against a versioned repository snapshot using optimistic concurrency.
+ *
+ * This helper loads the latest snapshot, validates the booking or held booking,
+ * and then attempts to persist it with the supplied `expectedVersion`.
+ */
 export async function confirmBookingWithVersion(
   input: ConfirmBookingWithVersionInput
 ): Promise<BookingConfirmationResult> {
